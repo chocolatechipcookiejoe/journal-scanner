@@ -1,0 +1,1197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Journal Scanner</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='5' y='3' width='22' height='26' rx='3' fill='%23d9a35b'/><path d='M10 10h12M10 15h12M10 20h8' stroke='%231b1714' stroke-width='2' stroke-linecap='round'/></svg>">
+<style>
+:root {
+  --bg: #15120f; --panel: #1e1a16; --panel-2: #26211c; --line: #3a322a;
+  --ink: #f1e9dc; --ink-2: #b8ab98; --ink-3: #85786a;
+  --accent: #d9a35b; --accent-ink: #1b1714; --good: #8fbf7f; --warn: #e2b04a; --bad: #e07a5f;
+  --serif: "New York", ui-serif, Georgia, serif;
+  --sans: system-ui, -apple-system, "SF Pro Text", sans-serif;
+  --r: 14px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--sans); }
+button, select, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+.app { display: grid; grid-template-rows: auto 1fr; height: 100vh; }
+
+/* header */
+header { display: flex; align-items: center; gap: 14px; padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.brand { display: flex; align-items: center; gap: 10px; margin-right: auto; }
+.brand h1 { font: 600 20px var(--serif); margin: 0; letter-spacing: .2px; }
+.brand svg { width: 26px; height: 26px; }
+.field { display: flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: 13px; }
+select, .btn { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 7px 11px; }
+select { max-width: 240px; }
+.btn { display: inline-flex; align-items: center; gap: 7px; transition: background .15s, border-color .15s; }
+.btn:hover { background: #2f2923; border-color: #4a4036; }
+.btn.danger { color: var(--bad); border-color: #6b3427; }
+.btn.danger:hover { background: #2f1b16; }
+.btn.icon { padding: 7px 9px; }
+.btn svg { width: 16px; height: 16px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); display: inline-block; }
+.dot.ok { background: var(--good); } .dot.bad { background: var(--bad); }
+
+/* layout */
+main { display: grid; grid-template-columns: 1fr 340px; min-height: 0; }
+.stage-wrap { display: grid; grid-template-rows: auto 1fr auto; gap: 14px; padding: 18px 20px 20px; min-height: 0; }
+.banner { display: none; padding: 10px 14px; border-radius: 10px; border: 1px solid; font-size: 13px; }
+.banner.show { display: block; }
+.banner.warn { background: #2e2615; border-color: #5c4a22; color: #f0d79a; }
+.banner.bad { background: #2f1b16; border-color: #6b3427; color: #f3b9a8; }
+.banners { display: grid; gap: 8px; }
+
+.stage { position: relative; background: #0d0b09; border-radius: var(--r); overflow: hidden; min-height: 0; display: grid; place-items: center; border: 1px solid var(--line); }
+.stage canvas#view { max-width: 100%; max-height: 100%; display: block; }
+.corners { position: absolute; inset: 22px; pointer-events: none; transition: opacity .3s; }
+.corners i { position: absolute; width: 34px; height: 34px; border: 3px solid rgba(241,233,220,.55); transition: border-color .25s; }
+.corners i:nth-child(1) { top: 0; left: 0; border-right: 0; border-bottom: 0; border-radius: 10px 0 0 0; }
+.corners i:nth-child(2) { top: 0; right: 0; border-left: 0; border-bottom: 0; border-radius: 0 10px 0 0; }
+.corners i:nth-child(3) { bottom: 0; left: 0; border-right: 0; border-top: 0; border-radius: 0 0 0 10px; }
+.corners i:nth-child(4) { bottom: 0; right: 0; border-left: 0; border-top: 0; border-radius: 0 0 10px 0; }
+.stage.steady .corners i { border-color: var(--accent); }
+.stage.saved .corners i { border-color: var(--good); }
+
+.pill { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); display: flex; align-items: center; gap: 12px;
+  padding: 10px 18px 10px 12px; border-radius: 999px; background: rgba(21,18,15,.82); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,.08);
+  font-size: 15px; white-space: nowrap; }
+.ring { width: 30px; height: 30px; }
+.ring circle { fill: none; stroke-width: 3.5; }
+.ring .track { stroke: rgba(255,255,255,.14); }
+.ring .fill { stroke: var(--accent); stroke-linecap: round; transform: rotate(-90deg); transform-origin: 50% 50%; transition: stroke-dashoffset .1s linear; }
+.pill.saved .ring .fill { stroke: var(--good); }
+.pill .sub { color: var(--ink-3); font-size: 13px; }
+.flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+.flash.go { animation: flash .45s ease-out; }
+@keyframes flash { from { opacity: .55; } to { opacity: 0; } }
+.counter { position: absolute; top: 18px; right: 20px; text-align: right; }
+.counter b { display: block; font: 600 34px/1 var(--serif); }
+.counter span { color: var(--ink-2); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+.meters { position: absolute; top: 18px; left: 20px; display: grid; gap: 6px; font-size: 11px; color: var(--ink-2); opacity: 0; transition: opacity .2s; }
+.stage:hover .meters, .meters.pinned { opacity: 1; }
+.meter { display: grid; grid-template-columns: 54px 110px; align-items: center; gap: 8px; }
+.meter div { height: 5px; background: rgba(255,255,255,.12); border-radius: 3px; overflow: hidden; }
+.meter div span { display: block; height: 100%; background: var(--ink-2); width: 0; }
+.empty-stage { position: absolute; inset: 0; background: #0d0b09; display: grid; place-items: center; text-align: center; padding: 30px; color: var(--ink-2); }
+.empty-stage[hidden] { display: none; }  /* without this, display:grid above beats the hidden attribute */
+.empty-stage h2 { font: 600 24px var(--serif); color: var(--ink); margin: 0 0 8px; }
+.empty-stage p { max-width: 420px; margin: 0 auto 18px; }
+.camchecks { list-style: none; padding: 0; margin: 0 auto 16px; max-width: 360px; text-align: left; font-size: 14px; }
+.camchecks li { padding: 4px 0; display: flex; gap: 10px; align-items: baseline; }
+.camchecks li b { width: 16px; flex: none; text-align: center; }
+.camchecks .ok b { color: #8fbf7f; } .camchecks .no b { color: var(--warn); } .camchecks .opt b { color: var(--ink-2); }
+.camtip { font-size: 14px; }
+#reloadCam { margin-left: 8px; } #reloadCam[hidden] { display: none; }
+
+.controls { display: flex; justify-content: center; align-items: center; gap: 22px; }
+.shutter { width: 68px; height: 68px; border-radius: 50%; border: 3px solid var(--ink); background: transparent; padding: 5px; }
+.shutter span { display: block; width: 100%; height: 100%; border-radius: 50%; background: var(--ink); transition: transform .1s; }
+.shutter:active span { transform: scale(.9); }
+.toggle { display: inline-flex; align-items: center; gap: 10px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; padding: 8px 16px 8px 8px; min-width: 150px; }
+.toggle .sw { width: 38px; height: 22px; border-radius: 11px; background: #4a4036; position: relative; transition: background .2s; }
+.toggle .sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--ink); transition: transform .2s; }
+.toggle.on .sw { background: var(--accent); }
+.toggle.on .sw::after { transform: translateX(16px); }
+.ghost { background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 9px 16px; color: var(--ink-2); min-width: 150px; }
+.ghost:hover { color: var(--ink); border-color: #4a4036; }
+.voice { display: inline-flex; align-items: center; gap: 8px; justify-content: center; }
+.voice svg { width: 16px; height: 16px; }
+.voice.on { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+.voice .lvl { width: 6px; height: 16px; border-radius: 3px; background: rgba(0,0,0,.25); position: relative; overflow: hidden; display: none; }
+.voice.on .lvl { display: block; }
+.voice .lvl i { position: absolute; left: 0; right: 0; bottom: 0; background: var(--accent-ink); height: 0; }
+.voice.heard { animation: heard .4s ease-out; }
+@keyframes heard { from { box-shadow: 0 0 0 0 rgba(217,163,91,.8); } to { box-shadow: 0 0 0 14px rgba(217,163,91,0); } }
+.hints { text-align: center; color: var(--ink-3); font-size: 12px; margin-top: -4px; }
+kbd { font: 11px var(--sans); background: var(--panel-2); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 1px 5px; color: var(--ink-2); }
+
+/* sidebar */
+aside { border-left: 1px solid var(--line); background: var(--panel); display: grid; grid-template-rows: auto auto 1fr; min-height: 0; }
+.side-head { padding: 18px 18px 10px; }
+.side-head h2 { font: 600 18px var(--serif); margin: 0 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stats { color: var(--ink-2); font-size: 13px; }
+.progress { height: 4px; background: var(--panel-2); border-radius: 2px; margin: 12px 18px 6px; overflow: hidden; }
+.progress span { display: block; height: 100%; background: var(--good); width: 0; transition: width .4s; }
+.strip { overflow-y: auto; padding: 8px 18px 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-content: start; }
+.thumb { position: relative; border-radius: 10px; overflow: hidden; background: var(--panel-2); border: 1px solid var(--line); aspect-ratio: 3/4; cursor: pointer; padding: 0; }
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb .n { position: absolute; top: 6px; left: 6px; font: 600 12px var(--serif); background: rgba(21,18,15,.8); padding: 1px 7px; border-radius: 6px; }
+.thumb .st { position: absolute; left: 6px; right: 6px; bottom: 6px; display: flex; align-items: center; gap: 6px; font-size: 11px; background: rgba(21,18,15,.85); padding: 3px 7px; border-radius: 6px; color: var(--ink-2); }
+.thumb.new { animation: pop .5s ease-out; }
+@keyframes pop { from { transform: scale(.85); opacity: 0; } to { transform: none; opacity: 1; } }
+.st .dot.reading { background: var(--accent); animation: pulse 1s infinite alternate; }
+.st .dot.done { background: var(--good); } .st .dot.failed { background: var(--bad); }
+@keyframes pulse { to { opacity: .3; } }
+.strip-empty { grid-column: 1 / -1; color: var(--ink-3); text-align: center; padding: 40px 10px; }
+
+/* viewer */
+dialog { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 18px; padding: 0; width: min(1200px, 94vw); height: min(860px, 90vh); }
+dialog::backdrop { background: rgba(0,0,0,.65); backdrop-filter: blur(3px); }
+.viewer { display: grid; grid-template-rows: auto 1fr; height: 100%; }
+.viewer-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.viewer-head h3 { font: 600 18px var(--serif); margin: 0 auto 0 0; }
+.viewer-head .vactions { display: flex; gap: 8px; flex-wrap: wrap; order: 1; }
+.viewer-head .close-x { order: 2; font-size: 16px; padding: 6px 12px; }
+.viewer-body { display: grid; grid-template-columns: 1.1fr 1fr; min-height: 0; }
+.viewer-body .img { background: #0d0b09; display: grid; place-items: center; min-height: 0; overflow: auto; }
+.viewer-body .img img { max-width: 100%; max-height: 100%; }
+.viewer-body .txt { padding: 22px 26px; overflow-y: auto; font: 16px/1.65 var(--serif); white-space: pre-wrap; border-left: 1px solid var(--line); }
+.recbar { white-space: normal; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 12px; margin: -8px -8px 16px; border-radius: 12px; background: #2f1b16; border: 1px solid #6b3427; font: 13px var(--sans); color: var(--ink-2); }
+.recbar[hidden] { display: none; }
+.recbar b { color: var(--ink); font-size: 15px; font-variant-numeric: tabular-nums; }
+.recbar .rechint { flex: 1 1 200px; }
+.recdot { width: 10px; height: 10px; border-radius: 50%; background: var(--bad); animation: pulse .8s infinite alternate; }
+.reclvl { width: 60px; height: 6px; border-radius: 3px; background: rgba(255,255,255,.12); overflow: hidden; }
+.reclvl i { display: block; height: 100%; width: 0; background: var(--bad); }
+.btn.rec { border-color: #6b3427; }
+.vstatus { white-space: normal; font: 13px var(--sans); color: var(--accent); margin: -6px 0 12px; }
+.vstatus:empty { display: none; }
+.vsec { white-space: pre-wrap; margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--line); font: 14px/1.55 var(--sans); color: var(--ink-2); }
+.vsec h4 { margin: 0 0 8px; font: 600 13px var(--sans); color: var(--ink-3); text-transform: uppercase; letter-spacing: .08em; }
+.mtabs { white-space: normal; display: flex; gap: 6px; flex-wrap: wrap; margin: -6px 0 14px; font-family: var(--sans); }
+.mtabs:empty { display: none; }
+.mtabs button { font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel-2); color: var(--ink-2); }
+.mtabs button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+.mtabs button small { opacity: .7; margin-left: 4px; }
+.txt .muted { color: var(--ink-3); font-family: var(--sans); font-size: 14px; }
+
+.settings { width: 420px; height: auto; }
+.settings form { padding: 6px 20px 20px; display: grid; gap: 16px; }
+.settings label { display: grid; gap: 6px; color: var(--ink-2); font-size: 13px; }
+.settings .row { display: flex; gap: 8px; }
+.settings .seg { display: flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.settings .seg button { flex: 1; border: 0; background: var(--panel-2); padding: 8px; color: var(--ink-2); }
+.settings .seg button.on { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.settings small { color: var(--ink-3); }
+.check { display: flex !important; grid-template-columns: none; align-items: center; gap: 8px !important; }
+
+.toast { position: fixed; left: 50%; bottom: 26px; transform: translate(-50%, 20px); opacity: 0; background: var(--ink); color: var(--accent-ink);
+  padding: 10px 18px; border-radius: 12px; font-weight: 500; transition: .25s; pointer-events: none; z-index: 10; }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+@media (max-width: 900px) {
+  main { grid-template-columns: 1fr; grid-template-rows: 1fr 150px; }
+  aside { border-left: 0; border-top: 1px solid var(--line); grid-template-rows: auto 1fr; }
+  .strip { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 78px; overflow-x: auto; overflow-y: hidden; padding: 4px 14px 12px; }
+  .strip-empty { padding: 20px 10px; }
+  .progress { display: none; }
+  .side-head { padding: 10px 14px 6px; display: flex; gap: 10px; align-items: baseline; }
+  .side-head h2 { font-size: 15px; flex: none; max-width: 45%; }
+  .stats { font-size: 12px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  header { flex-wrap: wrap; padding: 8px 12px; gap: 8px; padding-top: max(8px, env(safe-area-inset-top)); }
+  .brand h1 { font-size: 17px; }
+  .stage-wrap { padding: 10px 12px 12px; gap: 10px; }
+  .hints, .phone-hide { display: none !important; }
+  .pill { font-size: 14px; bottom: 14px; }
+  .counter b { font-size: 26px; }
+  .controls { gap: 14px; }
+  .toggle, .ghost { min-width: 0; }
+  dialog { width: 96vw; height: 92vh; }
+  .viewer-head { flex-wrap: wrap; }
+  .viewer-head .close-x { order: 0; }
+  .viewer-head .vactions { order: 1; width: 100%; }
+  .viewer-head .vactions .btn { flex: 1; justify-content: center; padding: 8px 6px; }
+  .viewer-body { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+  .viewer-body .txt { border-left: 0; border-top: 1px solid var(--line); }
+}
+.pair { width: 460px; height: auto; }
+.pair .body { padding: 8px 24px 24px; display: grid; gap: 14px; justify-items: center; text-align: center; }
+.pair img { width: 260px; height: 260px; image-rendering: pixelated; background: #fff; padding: 14px; border-radius: 14px; }
+.pair ol { text-align: left; margin: 0; padding-left: 20px; color: var(--ink-2); display: grid; gap: 6px; }
+.pair code { font-size: 12px; color: var(--ink-3); word-break: break-all; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">
+      <svg viewBox="0 0 32 32"><rect x="5" y="3" width="22" height="26" rx="3" fill="#d9a35b"/><path d="M10 10h12M10 15h12M10 20h8" stroke="#1b1714" stroke-width="2" stroke-linecap="round"/></svg>
+      <h1>Journal Scanner</h1>
+    </div>
+    <label class="field">Journal <select id="journal"></select></label>
+    <label class="field">Camera <select id="camera"><option>Waiting…</option></select></label>
+    <button class="btn icon phone-hide" id="reconnectTop" title="Reconnect the iPhone camera (restarts the Mac's Continuity Camera service; also undoes tapping Disconnect on the iPhone)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/><path d="M4 9a8 8 0 0 0 0 6"/><path d="M20 9a8 8 0 0 1 0 6"/></svg>
+    </button>
+    <button class="btn icon" id="rotate" title="Rotate the picture">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+    </button>
+    <button class="btn phone-hide" id="openNarrate" title="Read the pages aloud, one after another">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5"/></svg>Narrate
+    </button>
+    <button class="btn phone-hide" id="openOrganize" title="Move pages between journals">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6.5a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Organize
+    </button>
+    <button class="btn phone-hide" id="openPair" title="Use the iPhone's own camera, over Wi-Fi">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/></svg>iPhone
+    </button>
+    <button class="btn" id="openSettings" title="Settings"><span class="dot" id="ollamaDot"></span><span id="modelName">Reader</span></button>
+  </header>
+
+  <main>
+    <section class="stage-wrap">
+      <div class="banners">
+        <div class="banner bad" id="vaultBanner"></div>
+        <div class="banner warn" id="ollamaBanner">Ollama isn't running, so pages are saved but not read yet. Open the Ollama app; reading picks up on its own.</div>
+      </div>
+
+      <div class="stage" id="stage">
+        <canvas id="view"></canvas>
+        <div class="corners"><i></i><i></i><i></i><i></i></div>
+        <div class="meters" id="meters">
+          <div class="meter">Motion <div><span id="mMotion"></span></div></div>
+          <div class="meter">Sharpness <div><span id="mSharp"></span></div></div>
+          <div class="meter">New page <div><span id="mChange"></span></div></div>
+        </div>
+        <div class="counter"><b id="countBig">0</b><span>pages</span></div>
+        <div class="pill" id="pill">
+          <svg class="ring" viewBox="0 0 36 36"><circle class="track" cx="18" cy="18" r="15"/><circle class="fill" id="ringFill" cx="18" cy="18" r="15" stroke-dasharray="94.25" stroke-dashoffset="94.25"/></svg>
+          <div><div id="pillText">Starting the camera…</div><div class="sub" id="pillSub"></div></div>
+        </div>
+        <div class="flash" id="flash"></div>
+        <div class="empty-stage" id="noCam" hidden>
+          <div>
+            <h2 id="camTitle">Connect a camera</h2>
+            <p id="camHelp">Easiest: click <b>iPhone</b> at the top and scan the code with the iPhone, then scan from the phone. Or use Continuity Camera: iPhone locked, on a stand, near this Mac, then pick it under <b>Camera</b>.</p>
+            <ul class="camchecks" id="camChecks" hidden></ul>
+            <p class="camtip" id="camTip" hidden></p>
+            <button class="btn" id="startCam">Allow camera</button>
+            <button class="btn phone-hide" id="reconnectCam">Reconnect iPhone</button>
+            <button class="btn" id="reloadCam" hidden>Reload page</button>
+            <p id="camErr" style="margin-top:16px;color:var(--warn)"></p>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="controls">
+          <button class="toggle" id="auto"><span class="sw"></span><span id="autoLabel">Auto off</span></button>
+          <button class="shutter" id="shutter" title="Capture now (Space)"><span></span></button>
+          <button class="ghost" id="undo" title="Move the last page aside (Delete)">Undo last page</button>
+          <button class="ghost voice" id="voice" title="Say “Go” to take a page. Listens on this device only.">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+            <span id="voiceLabel">Say “Go”</span><span class="lvl"><i id="voiceLvl"></i></span>
+          </button>
+        </div>
+        <p class="hints"><kbd>Space</kbd> or say “Go” (turn on the mic button) to capture · <kbd>P</kbd> pause auto · <kbd>Delete</kbd> undo last · click a page to read it</p>
+      </div>
+    </section>
+
+    <aside>
+      <div class="side-head">
+        <h2 id="jTitle">No journal</h2>
+        <div class="stats" id="stats">Pick or start a journal.</div>
+      </div>
+      <div class="progress"><span id="progress"></span></div>
+      <div class="strip" id="strip"></div>
+    </aside>
+  </main>
+</div>
+
+<dialog id="viewer">
+  <div class="viewer">
+    <div class="viewer-head">
+      <h3 id="vTitle">Page</h3>
+      <button class="btn close-x" id="vClose" title="Close (Esc)" aria-label="Close">✕</button>
+      <div class="vactions">
+      <button class="btn" id="vPrev" title="Previous (←)">←</button>
+      <button class="btn" id="vNext" title="Next (→)">→</button>
+      <button class="btn rec" id="vRec" title="Read the page aloud to correct its transcript. Say “note” before anything you want to add about it.">🎙 Read aloud</button>
+      <button class="btn" id="vRotate" title="Turn the photo a quarter turn clockwise and read it again">↻ Rotate</button>
+      <button class="btn" id="vRetry">Read again</button>
+      <button class="btn" id="vDiscard" title="Keep it in _discarded, out of the journal">Move aside</button>
+      <button class="btn danger" id="vDelete" title="Delete this photo and its transcript for good">Delete</button>
+      </div>
+    </div>
+    <div class="viewer-body">
+      <div class="img"><img id="vImg" alt=""></div>
+      <div class="txt">
+        <div class="recbar" id="recBar" hidden>
+          <span class="recdot"></span><b id="recTime">0:00</b>
+          <span class="rechint">Read the page as written. Say “note” before anything you want to add about it.</span>
+          <span class="reclvl"><i id="recLvl"></i></span>
+          <button class="btn" id="recStop">Stop &amp; save</button><button class="btn" id="recCancel">Cancel</button>
+        </div>
+        <div class="vstatus" id="vStatus"></div>
+        <div class="mtabs" id="vTabs"></div><div id="vText"></div>
+        <section class="vsec" id="vDescSec" hidden><h4>About this page</h4><div id="vDesc"></div></section>
+        <section class="vsec" id="vNotesSec" hidden><h4>Your notes</h4><div id="vNotes"></div></section>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="pairDlg" class="pair">
+  <div class="viewer-head"><h3>iPhone and laptop</h3><button class="btn" id="pClose">Done</button></div>
+  <div class="body">
+    <img id="pairQr" alt="Pairing code">
+    <ol>
+      <li>Point the iPhone's Camera app at this code and tap the link. It opens the scanner in Safari.</li>
+      <li>First time only, Safari warns that the connection isn't private: tap <b>Show Details</b>, then <b>visit this website</b>. (To stop the warning for good, tap <b>Install certificate</b> on the phone afterwards.)</li>
+      <li>Tap <b>Allow</b> for the camera, put the phone on its stand over the journal, and flip.</li>
+    </ol>
+    <code id="pairUrl"></code>
+    <div style="border-top:1px solid var(--line);padding-top:12px;width:100%">
+      <b>Narrating from the laptop?</b>
+      <p style="margin:6px 0 10px;color:var(--ink-2)">Copy this link here, then paste it into <b>Safari</b> on your laptop (the copy reaches it through Universal Clipboard). It opens Narrate there. First time only, Safari warns the connection isn't private: click <b>Show Details</b> &rarr; <b>visit this website</b> &rarr; <b>Visit Website</b>, and enter the laptop's password. That makes the laptop trust this Mac for good, so the microphone works.</p>
+      <button class="btn" id="copyLaptop">Copy laptop link</button>
+    </div>
+    <small style="color:var(--ink-3)">Pages travel from the phone to this Mac over your home Wi-Fi, encrypted. Nothing goes to the internet. The code is a private key to your scanner; don't share a photo of it.</small>
+  </div>
+</dialog>
+
+<dialog id="settings" class="settings">
+  <div class="viewer-head"><h3>Settings</h3><button class="btn" id="sClose">Done</button></div>
+  <form method="dialog" onsubmit="return false">
+    <label>Capture speed
+      <div class="seg" id="speed">
+        <button data-v="500">Quick</button><button data-v="900">Steady</button><button data-v="1500">Careful</button>
+      </div>
+      <small>How long the page must sit still before it's taken.</small>
+    </label>
+    <label>New-page sensitivity
+      <div class="seg" id="sens">
+        <button data-v="0.05">High</button><button data-v="0.09">Normal</button><button data-v="0.14">Low</button>
+      </div>
+      <small>Lower it if the same page gets taken twice; raise it if pages are skipped.</small>
+    </label>
+    <label class="check"><input type="checkbox" id="readingOn"> Read pages as they're scanned</label>
+    <small style="margin-top:-10px">Off: pages are only saved, and wait in line. Turn it back on to read them all.</small>
+    <label>Reader (local Ollama model)
+      <select id="model"></select>
+      <small>32b reads messy handwriting better; 7b is quicker. Changing it reads pages that lack a transcript from that model.</small>
+    </label>
+    <label class="check"><input type="checkbox" id="sound"> Shutter sound</label>
+    <label class="check"><input type="checkbox" id="showMeters"> Always show the meters</label>
+    <label>New journal
+      <div class="row"><input id="newName" placeholder="e.g. 2019 Blue Moleskine" style="flex:1;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:7px 11px"><button class="btn" id="newBtn">Start</button></div>
+    </label>
+    <small id="saveTo"></small>
+    <a id="certLink" class="btn" href="/ca.crt" style="display:none;justify-content:center;text-decoration:none">Install certificate (stops Safari's warning)</a>
+    <small id="certHelp" style="display:none">After downloading: Settings → Profile Downloaded → Install. Then Settings → General → About → Certificate Trust Settings → turn on "Journal Scanner".</small>
+  </form>
+</dialog>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('js.' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('js.' + k, JSON.stringify(v)); } catch {} }
+};
+const cfg = {
+  hold: store.get('hold', 900), sens: store.get('sens', 0.09), rot: store.get('rot', 0),
+  sound: store.get('sound', true), meters: store.get('meters', false), cam: store.get('cam', null), camLabel: store.get('camLabel', ''),
+  journal: store.get('journal', null),
+};
+let status = { ready: false }, pages = [], auto = false, video = document.createElement('video');
+video.muted = true; video.playsInline = true; video.setAttribute('playsinline', '');
+const ON_PHONE = /iPhone|iPad|Android/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent) && location.protocol === 'https:');
+// iOS only decodes frames for a video that is in the page, so keep it there, invisible.
+Object.assign(video.style, { position: 'fixed', width: '2px', height: '2px', opacity: '0.01', pointerEvents: 'none', left: '0', top: '0' });
+document.body.appendChild(video);
+if (ON_PHONE) {
+  $('#camTitle').textContent = 'Allow the camera';
+  $('#camHelp').innerHTML = 'Tap below, then <b>Allow</b>. Put the phone on its stand over the journal, screen up.';
+  $('#certLink').style.display = $('#certHelp').style.display = '';
+}
+/* Keep the phone's screen awake while scanning. */
+let wake = null;
+async function keepAwake() { try { if ('wakeLock' in navigator && !wake) { wake = await navigator.wakeLock.request('screen'); wake.onrelease = () => { wake = null; }; } } catch {} }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') keepAwake(); });
+
+/* ---------------- server ---------------- */
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
+
+async function refreshStatus() {
+  try { status = await api('/api/status'); } catch { status = { ready: false, out: '?', serverDown: true }; }
+  const vb = $('#vaultBanner');
+  vb.textContent = status.serverDown ? "The scanner server stopped. Start it again in Terminal: python3 journal_scanner.py (in the journal-scanner folder)"
+    : `The save folder ${status.out} isn't there. Open your vault in Finder (enter its password), and this clears by itself.`;
+  vb.classList.toggle('show', !status.ready);
+  $('#ollamaBanner').classList.toggle('show', status.ready && !status.ollama);
+  $('#ollamaDot').className = 'dot ' + (status.reading_on === false ? '' : status.ollama ? 'ok' : 'bad');
+  $('#modelName').textContent = status.reading_on === false ? 'Reading paused' : status.model ? status.model.replace(/:latest$/, '') : 'Reader';
+  $('#readingOn').checked = status.reading_on !== false;
+  $('#saveTo').textContent = status.out ? `Pages save to ${status.out}/<journal>/ · transcripts in its transcripts/ folder.` : '';
+  const sel = $('#model'), models = status.models || [];
+  sel.innerHTML = (models.includes(status.model) ? models : [status.model, ...models]).filter(Boolean)
+    .map(m => `<option ${m === status.model ? 'selected' : ''}>${m}</option>`).join('');
+}
+
+async function refreshJournals() {
+  if (!status.ready) return;
+  const js = await api('/api/journals');
+  if (!cfg.journal || !js.find(j => j.name === cfg.journal)) {
+    if (!cfg.journal) cfg.journal = js[0]?.name || defaultJournalName();
+  }
+  const names = js.map(j => j.name);
+  if (!names.includes(cfg.journal)) names.unshift(cfg.journal);
+  $('#journal').innerHTML = names.map(n => `<option ${n === cfg.journal ? 'selected' : ''}>${esc(n)}</option>`).join('') + '<option value="__new">+ New journal…</option>';
+  store.set('journal', cfg.journal);
+}
+function defaultJournalName() { const d = new Date(); return 'Journal ' + new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); }
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+async function refreshPages() {
+  if (!status.ready || !cfg.journal) { pages = []; return renderStrip(); }
+  try { pages = await api('/api/pages/' + encodeURIComponent(cfg.journal)); } catch { pages = []; }
+  renderStrip();
+}
+
+const seen = new Set(); let stripKey = '';
+function renderStrip() {
+  const key = cfg.journal + JSON.stringify(pages);
+  if (key === stripKey) return; stripKey = key;
+  $('#jTitle').textContent = cfg.journal || 'No journal';
+  const done = pages.filter(p => p.status === 'done').length;
+  const reading = pages.find(p => p.status === 'reading');
+  const failed = pages.filter(p => p.status === 'failed').length;
+  const words = pages.reduce((a, p) => a + (p.words || 0), 0);
+  $('#countBig').textContent = pages.length;
+  $('#stats').textContent = pages.length
+    ? `${pages.length} page${pages.length > 1 ? 's' : ''} · ${done} read · ${words.toLocaleString()} words` + (status.reading_on === false ? ' · reading paused' : reading ? ` · reading p${reading.number}` : '') + (failed ? ` · ${failed} failed` : '')
+    : 'No pages yet. Open the journal under the camera.';
+  $('#progress').style.width = pages.length ? (100 * done / pages.length) + '%' : '0';
+  const strip = $('#strip');
+  if (!pages.length) { strip.innerHTML = '<div class="strip-empty">Captured pages show up here, newest first.</div>'; return; }
+  const label = { waiting: 'Waiting', queued: 'In line', reading: 'Reading…', done: '', failed: 'Failed, click to retry' };
+  const firstPaint = seen.size === 0;
+  strip.innerHTML = [...pages].reverse().map(p => {
+    const isNew = !firstPaint && !seen.has(p.name); seen.add(p.name);
+    const st = p.status === 'done' ? `${p.words} words` : label[p.status] || p.status;
+    return `<button class="thumb ${isNew ? 'new' : ''}" data-name="${p.name}">
+      <img loading="lazy" src="/img/${encodeURIComponent(cfg.journal)}/${p.name}?v=${Math.round(p.taken)}" alt="">
+      <span class="n">${p.number}</span>
+      <span class="st"><span class="dot ${p.status}"></span>${st}</span></button>`;
+  }).join('');
+}
+$('#strip').addEventListener('click', e => { const b = e.target.closest('.thumb'); if (b) openViewer(b.dataset.name); });
+
+/* ---------------- camera ---------------- */
+function report(msg) { try { fetch('/api/clientlog', { method: 'POST', body: String(msg).slice(0, 300) }); } catch {} }
+report(`page open; secure=${window.isSecureContext} camera-api=${!!navigator.mediaDevices?.getUserMedia} ua=${navigator.userAgent.replace(/^Mozilla\/5.0 /, '').slice(0, 120)}`);
+window.addEventListener('error', e => report('script error: ' + e.message));
+/* One camera start at a time: the page load, the 3 s retry and a tap used to overlap,
+   and the newer start aborted the older one ("The operation was aborted"). */
+let camStarting = null, wantAudio = false;
+const camRunning = () => !!(video.srcObject?.active && video.videoWidth);
+function startCamera(deviceId, force, quiet) {
+  if (camStarting) return camStarting.then(() => force ? startCamera(deviceId, true) : undefined);
+  camStarting = openCamera(deviceId, force, quiet).finally(() => { camStarting = null; });
+  return camStarting;
+}
+let lastCamFail = '';
+async function openCamera(deviceId, force, quiet) {
+  const current = video.srcObject?.getVideoTracks()[0]?.getSettings().deviceId;
+  if (!force && camRunning() && (!deviceId || deviceId === current)) { $('#noCam').hidden = true; return; }  // already on
+  if (video.srcObject) video.srcObject.getTracks().forEach(t => t.stop());
+  const want = { width: { ideal: 4032 }, height: { ideal: 3024 }, frameRate: { ideal: 30 } };
+  if (ON_PHONE && !deviceId) want.facingMode = { ideal: 'environment' };
+  try {
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: deviceId ? { ...want, deviceId: { exact: deviceId } } : want, audio: wantAudio ? MIC : false });
+    } catch (e) {
+      if (!wantAudio) throw e;  // mic refused: keep the camera going without it
+      report('mic refused: ' + e.name);
+      stream = await navigator.mediaDevices.getUserMedia({ video: deviceId ? { ...want, deviceId: { exact: deviceId } } : want, audio: false });
+    }
+    const vt = stream.getVideoTracks()[0];
+    vt.addEventListener('ended', () => { if (video.srcObject === stream) { report('camera track ended; restarting'); startCamera(cfg.cam, true); } });
+    vt.addEventListener('mute', () => { if (video.srcObject === stream) report('camera track muted'); });
+    video.srcObject = stream;
+    // play() waits for the first frame. A camera that connects but sends nothing (Continuity Camera
+    // can) would hang here forever and block every later start, so give it 6 s and carry on:
+    // the freeze check restarts it if the picture never comes.
+    await Promise.race([video.play().catch(() => {}), new Promise(r => setTimeout(r, 6000))]);
+    lastFrameChange = performance.now();
+    if (wantAudio) voiceAttach(stream);
+    $('#noCam').hidden = true; $('#camErr').textContent = '';
+    keepAwake();
+    lastCamFail = '';
+    if (!ON_PHONE) { const lb = vt.label || ''; if (lb && /iphone|continuity/i.test(lb)) { cfg.camLabel = lb; store.set('camLabel', lb); } }
+    report(`camera running ${video.videoWidth}x${video.videoHeight}${stream.getAudioTracks().length ? ' + mic' : ''}`);
+    const pick = await listCameras(stream.getVideoTracks()[0].getSettings().deviceId);
+    if (pick) setTimeout(() => startCamera(pick), 0);  // switch to the iPhone after this start settles
+  } catch (e) {
+    const why = `${e.name}: ${e.message}`;
+    if (!quiet || why !== lastCamFail) report(`camera failed: ${why}`);
+    lastCamFail = why;
+    if (camRunning()) return;  // a camera is on after all: don't cover it with an error
+    $('#noCam').hidden = false;
+    $('#camErr').textContent =
+      e.name === 'NotFoundError' || e.name === 'OverconstrainedError'
+        ? (ON_PHONE ? 'No camera found.' : 'This Mac doesn\'t see a camera. Click iPhone at the top to use the phone instead.')
+      : e.name === 'NotAllowedError'
+        ? (ON_PHONE ? 'Safari isn\'t allowed to use the camera. Tap aA in the address bar → Website Settings → Camera → Allow, then reload.' : 'The browser isn\'t allowed to use the camera. Turn it on in System Settings → Privacy & Security → Camera, and in this site\'s settings in the address bar, then reload.')
+      : e.name === 'AbortError'
+        ? 'The camera was interrupted. Tap Allow camera again.'
+      : 'Camera error: ' + (e.message || e.name);
+    setPill(0, 'No camera yet', '');
+    camCheck().then(showCamChecks);
+  }
+}
+/* Until a camera is running, check every 2.5 s whether one has appeared (e.g. the iPhone).
+   On the Mac, also ask the server what macOS itself sees: that tells "the Mac doesn't see
+   the iPhone" (fix it on the phone) apart from "the browser doesn't" (reload). */
+let macSees = null, seenSince = 0, lastSeenReport = null;
+async function camCheck() {
+  if (ON_PHONE) return null;
+  try { const r = await fetch('/api/camera-check'); return r.ok ? await r.json() : null; } catch { return null; }
+}
+function showCamChecks(c) {
+  const ul = $('#camChecks'), tip = $('#camTip');
+  if (!c) { ul.hidden = tip.hidden = true; $('#reloadCam').hidden = true; return; }
+  const row = (state, text) => `<li class="${state}"><b>${state === 'ok' ? '✓' : state === 'no' ? '✗' : '–'}</b><span>${text}</span></li>`;
+  ul.innerHTML = [
+    c.wifi !== null && row(c.wifi ? 'ok' : 'no', c.wifi ? 'Mac Wi-Fi is on' : 'Turn on Wi-Fi on this Mac (it can stay on Ethernet too)'),
+    c.bluetooth !== null && row(c.bluetooth ? 'ok' : 'no', c.bluetooth ? 'Mac Bluetooth is on' : 'Turn on Bluetooth on this Mac'),
+    c.phone && row(c.phone.nearby ? 'ok' : 'no', c.phone.nearby ? 'iPhone found nearby' : 'iPhone not nearby: bring it closer, Bluetooth on'),
+    c.phone?.ignored && row('no', 'The Mac is ignoring the iPhone because Disconnect was tapped on it'),
+    row(c.usb_iphone || c.phone?.wired ? 'ok' : 'opt', c.usb_iphone || c.phone?.wired ? 'iPhone plugged in by cable' : 'Not plugged in (a cable skips the next check)'),
+    c.phone && !c.phone.wired && row(c.phone.usable ? 'ok' : 'no', c.phone.usable ? 'iPhone says it\'s ready' : 'iPhone says it\'s not ready as a camera'),
+    row(c.iphone ? 'ok' : 'no', c.iphone ? 'This Mac offers the iPhone as a camera' : 'This Mac doesn\'t offer the iPhone as a camera yet'),
+  ].filter(Boolean).join('');
+  ul.hidden = false;
+  const stuck = c.iphone && seenSince && performance.now() - seenSince > 8000;
+  const notReady = c.phone && c.phone.nearby && !c.phone.usable && !c.phone.wired;
+  tip.innerHTML = !c.iphone && c.phone?.ignored
+    ? 'Tapping <b>Disconnect</b> on the iPhone makes the Mac ignore it until it\'s plugged in. Click <b>Reconnect iPhone</b> to undo that. (To stop for a while without this, pause from the Mac or just close this page.)'
+    : !c.iphone && notReady
+    ? 'This Mac has no camera of its own, so it only offers the iPhone when it\'s plugged in, or when the phone says it\'s ready: <b>locked, screen off, standing up</b> (landscape or upright, not flat), still, with the back camera clear. Try standing it on its side. On the iPhone, check Settings → General → AirPlay &amp; Continuity → <b>Continuity Camera</b> is on. The ✗ above turns to ✓ within a few seconds when it works. Or skip all this: click <b>iPhone</b> at the top to scan from the phone itself.'
+    : !c.iphone
+    ? 'On the iPhone: lock it and set it down still, near this Mac. Check Settings → General → AirPlay &amp; Continuity → <b>Continuity Camera</b> is on, the phone uses the same Apple Account as this Mac, and it isn\'t sharing its hotspot. This page connects on its own as soon as the Mac sees it.'
+    : stuck ? 'The Mac sees the iPhone, but this browser hasn\'t picked it up. Reload the page. If that doesn\'t do it, quit the browser fully (⌘Q) and open it again.'
+    : 'The Mac sees the iPhone. Connecting…';
+  tip.hidden = false;
+  $('#reloadCam').hidden = !stuck;
+}
+$('#reloadCam').onclick = () => location.reload();
+/* Restart macOS's Continuity Camera service, then try the camera again as it comes back. */
+async function reconnectIphone() {
+  const btns = [$('#reconnectCam'), $('#reconnectTop')];
+  btns.forEach(b => b.disabled = true);
+  setPill(0, 'Reconnecting the iPhone…', 'Keep it locked and standing still.');
+  report('reconnect iPhone clicked');
+  try {
+    const r = await fetch('/api/camera-reconnect', { method: 'POST' });
+    if (!r.ok) throw new Error(r.status);
+    if (video.srcObject) video.srcObject.getTracks().forEach(t => t.stop());
+    let ok = false;
+    for (let i = 0; i < 8 && !ok; i++) {          // the service is back within a few seconds
+      await new Promise(res => setTimeout(res, 2000));
+      const c = await camCheck();
+      if (c?.iphone) { await startCamera(cfg.cam, true, true); ok = camRunning(); }
+    }
+    toast(ok ? 'iPhone reconnected.' : 'The Mac doesn\'t offer the iPhone yet. Check the list on the screen.');
+    report(`reconnect iPhone: ${ok ? 'running' : 'not yet'}`);
+  } catch (e) {
+    toast('Couldn\'t restart the Continuity Camera service.');
+  }
+  btns.forEach(b => b.disabled = false);
+}
+$('#reconnectCam').onclick = reconnectIphone;
+$('#reconnectTop').onclick = reconnectIphone;
+setInterval(async () => {
+  if (camRunning()) { macSees = null; seenSince = 0; return; }
+  const c = await camCheck();
+  if (c) {
+    if (c.iphone && !macSees) seenSince = performance.now();
+    if (!c.iphone) seenSince = 0;
+    macSees = c.iphone;
+    const ph = c.phone ? `nearby=${c.phone.nearby} ready=${c.phone.usable} wired=${c.phone.wired} ignored=${c.phone.ignored}` : 'phone=?';
+    const key = `${c.iphone}/${c.usb_iphone}/${c.wifi}/${c.bluetooth}/${ph}`;
+    if (key !== lastSeenReport) { lastSeenReport = key; report(`mac sees iphone camera=${c.iphone} cable=${c.usb_iphone} wifi=${c.wifi} bt=${c.bluetooth} ${ph}`); }
+  }
+  if (!$('#noCam').hidden) showCamChecks(c);
+  if (camStarting) return;
+  try {
+    const cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+    // Try when the browser lists a camera, and also when macOS sees the iPhone but the browser's list is stale.
+    if (cams.length || macSees) {
+      const byLabel = cfg.camLabel && cams.find(d => d.label === cfg.camLabel);
+      const id = cams.some(d => d.deviceId === cfg.cam) ? cfg.cam : byLabel ? byLabel.deviceId : undefined;
+      await startCamera(id, false, true);
+    }
+  } catch {}
+}, 2500);
+async function listCameras(activeId) {
+  const cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+  $('#camera').innerHTML = cams.map((c, i) => `<option value="${c.deviceId}" ${c.deviceId === activeId ? 'selected' : ''}>${esc(c.label || 'Camera ' + (i + 1))}</option>`).join('');
+  const phone = cams.find(c => /iphone|continuity/i.test(c.label) && !/desk view/i.test(c.label));
+  const saved = cams.find(c => c.deviceId === cfg.cam) || (cfg.camLabel && cams.find(c => c.label === cfg.camLabel));
+  if (saved && saved.deviceId !== cfg.cam) { cfg.cam = saved.deviceId; store.set('cam', cfg.cam); }
+  const pick = saved || (ON_PHONE ? null : phone);
+  if (pick && pick.deviceId !== activeId) return pick.deviceId;  // the caller switches to it
+  if (!pick && !ON_PHONE && !listCameras.warned) { listCameras.warned = true; toast('No iPhone camera found yet. Bring the phone close and pick it under Camera.'); }
+  return null;
+}
+navigator.mediaDevices?.addEventListener('devicechange', async () => {
+  const pick = await listCameras(video.srcObject?.getVideoTracks()[0]?.getSettings().deviceId);
+  if (pick) startCamera(pick);
+});
+$('#camera').onchange = e => {
+  cfg.cam = e.target.value; store.set('cam', cfg.cam);
+  cfg.camLabel = e.target.selectedOptions[0]?.textContent || ''; store.set('camLabel', cfg.camLabel);
+  startCamera(cfg.cam);
+};
+$('#startCam').onclick = () => { report('Allow camera tapped'); startCamera(cfg.cam); };
+$('#rotate').onclick = () => { cfg.rot = (cfg.rot + 90) % 360; store.set('rot', cfg.rot); };
+
+/* draw the (rotated) picture onto a canvas */
+function drawRotated(ctx, w, h) {
+  const r = cfg.rot, vw = video.videoWidth, vh = video.videoHeight;
+  ctx.save();
+  ctx.translate(w / 2, h / 2); ctx.rotate(r * Math.PI / 180);
+  const sw = r % 180 ? h : w, sh = r % 180 ? w : h;
+  ctx.drawImage(video, 0, 0, vw, vh, -sw / 2, -sh / 2, sw, sh);
+  ctx.restore();
+}
+function rotatedSize(scale) {
+  const vw = Math.round(video.videoWidth * scale), vh = Math.round(video.videoHeight * scale);
+  return cfg.rot % 180 ? [vh, vw] : [vw, vh];
+}
+const view = $('#view'), vctx = view.getContext('2d');
+function paint() {
+  if (video.videoWidth) {
+    if (video.srcObject?.active && !$('#noCam').hidden) $('#noCam').hidden = true;
+    const stage = $('#stage'), [w, h] = rotatedSize(1);
+    const k = Math.min(stage.clientWidth / w, stage.clientHeight / h, 1) * devicePixelRatio;
+    const cw = Math.round(w * k), ch = Math.round(h * k);
+    if (view.width !== cw || view.height !== ch) { view.width = cw; view.height = ch; view.style.width = cw / devicePixelRatio + 'px'; view.style.height = ch / devicePixelRatio + 'px'; }
+    drawRotated(vctx, cw, ch);
+  }
+  requestAnimationFrame(paint);
+}
+requestAnimationFrame(paint);
+
+/* ---------------- page detection ----------------
+   Every 100 ms: shrink the frame to 160 px grey.
+   motion   = mean change since the last frame (page turning, hands moving)
+   sharp    = Laplacian variance of the middle of a 480 px frame (focus)
+   change   = share of pen strokes that don't line up with the last saved page's
+   A page is taken when: something moved since the last capture, the picture
+   differs from the last saved page, it has held still for `hold` ms, and the
+   focus has settled (sharpness not still climbing). */
+const small = document.createElement('canvas'), sctx = small.getContext('2d', { willReadFrequently: true });
+const mid = document.createElement('canvas'), mctx = mid.getContext('2d', { willReadFrequently: true });
+let frozen = false, lastFrameChange = 0, lastRestart = 0, restartGap = 0, flowingSince = 0;
+let prev = null, lastSaved = null, curInk = null, stillSince = 0, movedSinceSave = true, noise = [], sharpHist = [], busy = false, savedAt = 0;
+
+function grey(ctx, w, h) {
+  const d = ctx.getImageData(0, 0, w, h).data, g = new Float32Array(w * h);
+  for (let i = 0, j = 0; j < g.length; i += 4, j++) g[j] = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+  return g;
+}
+function meanDiff(a, b) { if (!a || !b || a.length !== b.length) return 255; let s = 0; for (let i = 0; i < a.length; i++) s += Math.abs(a[i] - b[i]); return s / a.length; }
+function stdev(g) { let m = 0; for (const v of g) m += v; m /= g.length; let s = 0; for (const v of g) s += (v - m) ** 2; return Math.sqrt(s / g.length); }
+/* One 480 px grey frame gives both focus and the "ink" map. */
+function midFrame() {
+  const [w, h] = rotatedSize(480 /Math.max(video.videoWidth, video.videoHeight));
+  if (mid.width !== w) { mid.width = w; mid.height = h; }
+  drawRotated(mctx, w, h);
+  return { g: grey(mctx, w, h), w, h };
+}
+function sharpness({ g, w, h }) {  // variance of the Laplacian over the middle 60%
+  let s = 0, s2 = 0, n = 0;
+  for (let y = Math.round(h * .2); y < h * .8; y++) for (let x = Math.round(w * .2); x < w * .8; x++) {
+    const i = y * w + x, L = g[i - 1] + g[i + 1] + g[i - w] + g[i + w] - 4 * g[i];
+    s += L; s2 += L * L; n++;
+  }
+  return s2 / n - (s / n) ** 2;
+}
+/* Ink map: pixels clearly darker than their surroundings (pen strokes, not paper or shadows). */
+function inkMap({ g, w, h }) {
+  const I = new Float64Array((w + 1) * (h + 1)), r = 7;
+  for (let y = 0; y < h; y++) { let row = 0; for (let x = 0; x < w; x++) { row += g[y * w + x]; I[(y + 1) * (w + 1) + x + 1] = I[y * (w + 1) + x + 1] + row; } }
+  // "Paper" brightness = 90th percentile; ink must sit in a paper-bright neighbourhood,
+  // which leaves out the page's edge against the desk and soft gutter shadows.
+  const sorted = Float32Array.from(g).sort(), paper = sorted[Math.floor(sorted.length * .9)];
+  const ink = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const x0 = Math.max(0, x - r), x1 = Math.min(w, x + r + 1), y0 = Math.max(0, y - r), y1 = Math.min(h, y + r + 1);
+    const m = (I[y1 * (w + 1) + x1] - I[y0 * (w + 1) + x1] - I[y1 * (w + 1) + x0] + I[y0 * (w + 1) + x0]) / ((x1 - x0) * (y1 - y0));
+    ink[y * w + x] = g[y * w + x] < m - 10 && m > paper * .75 ? 1 : 0;
+  }
+  const pts = [];
+  for (let i = 0; i < ink.length; i++) if (ink[i]) pts.push(i);
+  return { pts, grown: grow(ink, w, h, 1), w, h };
+}
+function grow(a, w, h, r) {  // dilate so a page that shifts a few pixels still matches itself
+  const t = new Uint8Array(w * h), o = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (a[y * w + x]) for (let k = Math.max(0, x - r); k <= Math.min(w - 1, x + r); k++) t[y * w + k] = 1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (t[y * w + x]) for (let k = Math.max(0, y - r); k <= Math.min(h - 1, y + r); k++) o[k * w + x] = 1;
+  return o;
+}
+/* Share of pen strokes in either frame with no stroke under them in the other, at the best
+   small shift (so a nudged journal still matches itself): ~0 same page, high for a new one. */
+function inkChange(a, b) {
+  if (!a || !b || a.w !== b.w || a.h !== b.h) return 1;
+  const total = a.pts.length + b.pts.length, w = a.w, n = w * a.h;
+  if (total < 60) return 0;                       // two blank pages look the same
+  const miss = (P, G, off) => { let m = 0; for (const i of P) { const j = i + off; if (j < 0 || j >= n || !G[j]) m++; } return m; };
+  let best = 1;
+  for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
+    const off = dy * w + dx;
+    best = Math.min(best, (miss(a.pts, b.grown, -off) + miss(b.pts, a.grown, off)) / total);
+  }
+  return best;
+}
+
+function tick() {
+  if (!video.videoWidth || busy) return;
+  const [w, h] = rotatedSize(160 / Math.max(video.videoWidth, video.videoHeight));
+  if (small.width !== w) { small.width = w; small.height = h; prev = null; }
+  drawRotated(sctx, w, h);
+  const g = grey(sctx, w, h), now = performance.now();
+  const motion = prev ? meanDiff(g, prev) : 99; prev = g;
+  // A live camera never gives two identical frames (sensor noise). Identical for 1.5 s = frozen.
+  if (motion > 0) { lastFrameChange = now; if (!flowingSince) flowingSince = now; }
+  if (flowingSince && now - flowingSince > 20000) restartGap = 0;   // running fine again: back to quick restarts
+  frozen = now - lastFrameChange > 1500;
+  if (frozen) {
+    flowingSince = 0;
+    $('#stage').classList.remove('steady');
+    // Continuity Camera pauses its picture while the iPhone is moved or picked up, and comes back
+    // by itself. Closing the camera then can make macOS drop the phone. So on the Mac: wait 8 s
+    // first, then restart with growing gaps (8, 16, 32, 60 s). The phone page restarts quickly.
+    const muted = video.srcObject?.getVideoTracks()[0]?.muted;
+    const wait = ON_PHONE ? 1500 : 8000;
+    const gap = ON_PHONE ? 5000 : (restartGap || 8000);
+    const pausedFor = now - lastFrameChange;
+    if (pausedFor < wait || now - lastRestart < gap) {
+      setPill(0, ON_PHONE ? 'Camera stopped' : 'iPhone camera paused', ON_PHONE ? 'Restarting it…' : 'Set the iPhone down still and it comes back.' + (muted ? '' : ' Restarting soon if not.'));
+      return;
+    }
+    if (!ON_PHONE) restartGap = Math.min((restartGap || 8000) * 2, 60000);
+    lastRestart = now; report(`camera frozen ${Math.round(pausedFor / 1000)}s${muted ? ' (muted)' : ''}; restarting`);
+    setPill(0, 'Camera stopped', 'Restarting it…');
+    startCamera(cfg.cam, true);
+    return;
+  }
+  const mf = midFrame(), sharp = sharpness(mf);
+  curInk = inkMap(mf);
+  const change = lastSaved ? inkChange(curInk, lastSaved) : 1;
+  sharpHist.push(sharp); if (sharpHist.length > 6) sharpHist.shift();
+
+  noise.push(motion); if (noise.length > 40) noise.shift();
+  const floor = Math.min(...noise);
+  const stillLimit = Math.max(1.2, floor * 1.8 + 0.6);
+  const still = motion < stillLimit;
+  if (motion > stillLimit * 3 + 3) movedSinceSave = true;
+  if (!still) stillSince = now;
+  const heldMs = now - stillSince;
+
+  meter('#mMotion', motion / 12); meter('#mSharp', Math.log10(sharp + 1) / 3.5); meter('#mChange', change / (cfg.sens * 2));
+
+  const stage = $('#stage');
+  const blank = stdev(g) < 6;               // lens covered / nothing there
+  const isNew = change > cfg.sens && movedSinceSave;
+  const settled = sharpHist.length >= 4 && sharp <= Math.max(...sharpHist.slice(0, -1)) * 1.06;
+  if (now - savedAt < 1400) return;          // let the "Saved" moment show
+  stage.classList.remove('saved');
+
+  if (!status.ready) { stage.classList.remove('steady'); return setPill(0, 'Not saving', 'The save folder is missing (see above).'); }
+  if (!auto) { stage.classList.remove('steady'); return setPill(0, pages.length ? `Page ${pages.length} saved` : 'Ready', ON_PHONE ? 'Tap the round button to take a page.' : 'Press Space or click the round button to take a page.'); }
+  if (blank) { stage.classList.remove('steady'); return setPill(0, 'Nothing in view', 'Point the iPhone at the journal.'); }
+  if (!isNew) { stage.classList.remove('steady'); return setPill(0, pages.length ? 'Turn the page' : 'Open the journal', pages.length ? `Page ${pages.length} is saved.` : 'Lay it flat under the camera.'); }
+  if (!still) { stage.classList.remove('steady'); return setPill(0, 'Hands clear…', 'Waiting for the page to settle.'); }
+  stage.classList.add('steady');
+  setPill(Math.min(1, heldMs / cfg.hold), 'Hold still…', 'Taking this page.');
+  if (heldMs >= cfg.hold && settled) capture('auto');
+}
+setInterval(tick, 100);
+
+function meter(sel, v) { $(sel).style.width = Math.max(0, Math.min(1, v)) * 100 + '%'; }
+function setPill(frac, text, sub, saved) {
+  $('#ringFill').style.strokeDashoffset = 94.25 * (1 - frac);
+  $('#pill').classList.toggle('saved', !!saved);
+  if ($('#pillText').textContent !== text) $('#pillText').textContent = text;
+  $('#pillSub').textContent = sub || '';
+}
+
+/* ---------------- capture ---------------- */
+let audioCtx;
+function click() {
+  if (!cfg.sound) return;
+  try {
+    audioCtx = audioCtx || new AudioContext();
+    const t = audioCtx.currentTime, len = 0.06, buf = audioCtx.createBuffer(1, audioCtx.sampleRate * len, audioCtx.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3);
+    const src = audioCtx.createBufferSource(), f = audioCtx.createBiquadFilter(), g = audioCtx.createGain();
+    f.type = 'bandpass'; f.frequency.value = 2400; g.gain.value = 0.5;
+    src.buffer = buf; src.connect(f); f.connect(g); g.connect(audioCtx.destination); src.start(t);
+  } catch {}
+}
+
+async function capture(how) {
+  if (busy || !video.videoWidth) return;
+  if (frozen) return toast('The camera is restarting. Try again in a moment.');
+  if (!status.ready) return toast('Mount your vault first; nothing is saved until it is.');
+  busy = true;
+  try {
+    const [w, h] = rotatedSize(1), c = document.createElement('canvas');
+    c.width = w; c.height = h; drawRotated(c.getContext('2d'), w, h);
+    lastSaved = curInk; movedSinceSave = false;
+    const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.92));
+    click(); const f = $('#flash'); f.classList.remove('go'); void f.offsetWidth; f.classList.add('go');
+    const { name } = await api('/api/pages/' + encodeURIComponent(cfg.journal), { method: 'POST', body: blob, headers: { 'Content-Type': 'image/jpeg' } });
+    savedAt = performance.now(); $('#stage').classList.add('saved'); $('#stage').classList.remove('steady');
+    setPill(1, `Saved page ${parseInt(name.slice(1), 10)}`, `${w}×${h} · turn the page when ready`, true);
+    await refreshPages(); refreshJournalsQuiet();
+  } catch (e) {
+    toast('Not saved: ' + e.message);
+  } finally { busy = false; }
+}
+let rjq; function refreshJournalsQuiet() { clearTimeout(rjq); rjq = setTimeout(refreshJournals, 500); }
+
+async function undoLast() {
+  const last = pages[pages.length - 1];
+  if (!last) return toast('Nothing to undo.');
+  try {
+    await api(`/api/discard/${encodeURIComponent(cfg.journal)}/${last.name}`, { method: 'POST' });
+    lastSaved = null; movedSinceSave = true;
+    toast(`Page ${last.number} moved aside to _discarded. Hold the page still to take it again.`);
+    refreshPages();
+  } catch (e) { toast(e.message); }
+}
+
+function setAuto(on, remember) {
+  auto = on; $('#auto').classList.toggle('on', on); $('#autoLabel').textContent = on ? 'Auto capture' : 'Auto off';
+  if (remember) store.set('auto', on);
+}
+setAuto(store.get('auto', false));  // off unless you turned it on last time
+$('#auto').onclick = () => setAuto(!auto, true);
+$('#shutter').onclick = () => capture('manual');
+$('#undo').onclick = undoLast;
+
+document.addEventListener('keydown', e => {
+  if (e.target.matches('input, select, textarea')) return;
+  if ($('#viewer').open) {
+    if (e.key === 'ArrowLeft') step(-1); if (e.key === 'ArrowRight') step(1); return;
+  }
+  if ($('#settings').open) return;
+  if (e.code === 'Space') { e.preventDefault(); capture('manual'); }
+  else if (e.key === 'p' || e.key === 'P') setAuto(!auto, true);
+  else if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); undoLast(); }
+});
+
+/* ---------------- journals ---------------- */
+$('#journal').onchange = e => {
+  if (e.target.value === '__new') { openSettings(); $('#newName').focus(); e.target.value = cfg.journal; return; }
+  switchJournal(e.target.value);
+};
+function switchJournal(name) {
+  cfg.journal = name; store.set('journal', name); lastSaved = null; movedSinceSave = true; seen.clear();
+  refreshJournals(); refreshPages();
+}
+$('#newBtn').onclick = () => {
+  const n = $('#newName').value.trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9 _.-]{0,79}$/.test(n)) return toast('Use letters, numbers, spaces, - _ . (start with a letter or number).');
+  $('#newName').value = ''; $('#settings').close(); switchJournal(n); toast(`New journal "${n}". It's created with its first page.`);
+};
+
+/* ---------------- viewer ---------------- */
+let vIdx = -1;
+async function openViewer(name) {
+  vIdx = pages.findIndex(p => p.name === name); if (vIdx < 0) return;
+  if (!$('#viewer').open) autoBeforeViewer = auto;
+  setAuto(false);
+  if (!$('#viewer').open) $('#viewer').showModal();
+  await showPage();
+}
+async function showPage() {
+  const p = pages[vIdx];
+  if (showPage.last !== p.name) { showPage.last = p.name; showPage.picked = false; }
+  $('#vTitle').textContent = `Page ${p.number}`;
+  $('#vImg').src = `/img/${encodeURIComponent(cfg.journal)}/${p.name}?v=${Math.round(p.taken)}`;
+  $('#vPrev').disabled = vIdx === 0; $('#vNext').disabled = vIdx === pages.length - 1;
+  const t = $('#vText'), tabs = $('#vTabs');
+  let info = { transcripts: [], descriptions: [], notes: '', voice: null };
+  try { info = await api(`/api/page/${encodeURIComponent(cfg.journal)}/${p.name}`); } catch {}
+  if (pages[vIdx]?.name !== p.name) return;  // moved on meanwhile
+
+  // where your reading aloud is up to
+  const v = info.voice || '';
+  $('#vStatus').textContent = v === 'waiting' || v === 'transcribing' ? 'Turning your reading into text…'
+    : v === 'merging' ? 'Correcting the transcript with your reading…'
+    : v.startsWith('failed') ? 'Your reading couldn’t be used: ' + v.slice(8) : '';
+  clearTimeout(showPage.poll);
+  if (['waiting', 'transcribing', 'merging'].includes(v) || p.status === 'reading' || p.status === 'queued')
+    showPage.poll = setTimeout(() => { if ($('#viewer').open && !rec.on) showPage(); }, 3000);
+
+  // the page description and your notes
+  const desc = info.descriptions.find(d => d.model === status.model) || info.descriptions[0];
+  $('#vDescSec').hidden = !desc; $('#vDesc').textContent = desc ? desc.text.trim() : '';
+  $('#vNotesSec').hidden = !info.notes.trim(); $('#vNotes').textContent = info.notes.replace(/^### /gm, '').trim();
+
+  const rows = info.transcripts;
+  if (!rows.length) {
+    tabs.innerHTML = '';
+    t.innerHTML = `<span class="muted">${p.status === 'failed' ? 'Reading failed: ' + esc(p.error || '') + '. Use “Read again”.' : p.status === 'reading' ? 'Reading this page now…' : status.reading_on === false ? 'Reading is paused (Settings). You can still read it aloud.' : 'Waiting its turn to be read.'}</span>`;
+    return;
+  }
+  // One tab per reading: yours first, then the current model, then others.
+  const rank = r => r.model === 'your reading' ? 2 : r.model === status.model ? 1 : 0;
+  rows.sort((a, b) => rank(b) - rank(a));
+  if (!rows.some(r => r.model === viewModel) || (rows[0].model === 'your reading' && viewModel !== 'your reading' && !showPage.picked)) viewModel = rows[0].model;
+  const paint = () => {
+    tabs.innerHTML = rows.length > 1 ? rows.map(r => `<button data-m="${esc(r.model)}" class="${r.model === viewModel ? 'on' : ''}">${esc(r.model)}<small>${r.text.split(/\s+/).filter(Boolean).length}w</small></button>`).join('') : '';
+    t.textContent = rows.find(r => r.model === viewModel).text;
+  };
+  tabs.onclick = e => { const b = e.target.closest('button'); if (b) { viewModel = b.dataset.m; showPage.picked = true; paint(); } };
+  paint();
+}
+let viewModel = null;
+function step(d) { if (rec.on) return toast('Stop the recording first.'); const n = vIdx + d; if (n >= 0 && n < pages.length) { vIdx = n; showPage(); } }
+$('#vPrev').onclick = () => step(-1); $('#vNext').onclick = () => step(1);
+$('#vClose').onclick = () => $('#viewer').close();
+// Tapping the dimmed area outside a window closes it.
+document.querySelectorAll('dialog').forEach(d => d.addEventListener('click', e => { if (e.target === d) d.close(); }));
+let autoBeforeViewer = false;
+$('#viewer').addEventListener('close', () => setAuto(autoBeforeViewer));
+$('#vRetry').onclick = async () => { const p = pages[vIdx]; await api(`/api/retry/${encodeURIComponent(cfg.journal)}/${p.name}`, { method: 'POST' }); await refreshPages(); showPage(); toast('Queued to be read again.'); };
+$('#vDiscard').onclick = async () => {
+  const p = pages[vIdx];
+  await api(`/api/discard/${encodeURIComponent(cfg.journal)}/${p.name}`, { method: 'POST' });
+  toast(`Page ${p.number} moved aside to _discarded.`); await refreshPages();
+  if (!pages.length) return $('#viewer').close();
+  vIdx = Math.min(vIdx, pages.length - 1); showPage();
+};
+$('#vRotate').onclick = async () => {
+  const p = pages[vIdx];
+  try {
+    await api(`/api/rotate/${encodeURIComponent(cfg.journal)}/${p.name}/90`, { method: 'POST' });
+    toast('Turned. It will be read again.'); stripKey = ''; await refreshPages(); showPage();
+  } catch (e) { toast(e.message); }
+};
+
+/* ---------- read aloud: record here, as a WAV, and send it to the Mac ---------- */
+const rec = { on: false };
+async function recStart() {
+  if (rec.on) return;
+  const p = pages[vIdx];
+  let stream, own = true;
+  try {
+    // On the iPhone, reuse the camera's mic if "Go" has it open (a second capture session freezes the camera).
+    const shared = video.srcObject?.getAudioTracks()[0];
+    if (shared && shared.readyState === 'live') { stream = new MediaStream([shared]); own = false; }
+    else stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+  } catch (e) { return toast(e.name === 'NotAllowedError' ? 'Microphone blocked. Allow it for this site, then try again.' : 'No microphone: ' + e.name); }
+  const ctx = new AudioContext(); await ctx.resume();
+  const src = ctx.createMediaStreamSource(stream), proc = ctx.createScriptProcessor(4096, 1, 1), mute = ctx.createGain();
+  mute.gain.value = 0; src.connect(proc); proc.connect(mute); mute.connect(ctx.destination);
+  const chunks = [];
+  proc.onaudioprocess = e => {
+    const d = e.inputBuffer.getChannelData(0); chunks.push(new Float32Array(d));
+    let m = 0; for (let i = 0; i < d.length; i += 16) m = Math.max(m, Math.abs(d[i]));
+    $('#recLvl').style.width = Math.min(100, m * 250) + '%';
+  };
+  Object.assign(rec, { on: true, page: p.name, journal: cfg.journal, stream, own, ctx, proc, src, chunks, t0: performance.now() });
+  rec.timer = setInterval(() => { const s = Math.floor((performance.now() - rec.t0) / 1000); $('#recTime').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }, 250);
+  $('#recTime').textContent = '0:00'; $('#recBar').hidden = false; $('#vRec').disabled = true;
+}
+function recEnd() {
+  clearInterval(rec.timer);
+  try { rec.src.disconnect(); rec.proc.disconnect(); } catch {}
+  if (rec.own) rec.stream.getTracks().forEach(t => t.stop());
+  const rate = rec.ctx.sampleRate; rec.ctx.close();
+  rec.on = false; $('#recBar').hidden = true; $('#vRec').disabled = false;
+  return rate;
+}
+function toWav(chunks, rate) {
+  // one mono 16 kHz, 16-bit WAV: what whisper.cpp wants
+  const n = chunks.reduce((a, c) => a + c.length, 0), all = new Float32Array(n);
+  let o = 0; for (const c of chunks) { all.set(c, o); o += c.length; }
+  const ratio = rate / 16000, len = Math.floor(n / ratio), pcm = new Int16Array(len);
+  for (let i = 0; i < len; i++) {
+    const a = Math.floor(i * ratio), b = Math.min(n, Math.floor((i + 1) * ratio)); let sum = 0;
+    for (let k = a; k < b; k++) sum += all[k];
+    const v = Math.max(-1, Math.min(1, sum / Math.max(1, b - a))); pcm[i] = v < 0 ? v * 0x8000 : v * 0x7fff;
+  }
+  const buf = new ArrayBuffer(44 + pcm.byteLength), dv = new DataView(buf);
+  const str = (off, s) => [...s].forEach((ch, i) => dv.setUint8(off + i, ch.charCodeAt(0)));
+  str(0, 'RIFF'); dv.setUint32(4, 36 + pcm.byteLength, true); str(8, 'WAVE'); str(12, 'fmt ');
+  dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true); dv.setUint32(24, 16000, true);
+  dv.setUint32(28, 32000, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true); str(36, 'data'); dv.setUint32(40, pcm.byteLength, true);
+  new Int16Array(buf, 44).set(pcm);
+  return new Blob([buf], { type: 'audio/wav' });
+}
+async function recStop() {
+  if (!rec.on) return;
+  const { chunks, journal, page } = rec, secs = (performance.now() - rec.t0) / 1000, rate = recEnd();
+  if (secs < 1.5) return toast('That was too short to use.');
+  try {
+    await api(`/api/readaloud/${encodeURIComponent(journal)}/${page}`, { method: 'POST', body: toWav(chunks, rate), headers: { 'Content-Type': 'audio/wav' } });
+    toast('Saved. Turning your reading into text on the Mac…'); showPage.picked = false; showPage();
+  } catch (e) { toast('Not saved: ' + e.message); }
+}
+$('#vRec').onclick = recStart;
+$('#recStop').onclick = recStop;
+$('#recCancel').onclick = () => { if (rec.on) { recEnd(); toast('Recording thrown away.'); } };
+$('#viewer').addEventListener('close', () => { if (rec.on) { recEnd(); toast('Recording thrown away (page closed).'); } clearTimeout(showPage.poll); });
+
+$('#vDelete').onclick = async () => {
+  const p = pages[vIdx];
+  if (!confirm(`Delete page ${p.number} for good? The photo and its transcript are erased and can't be brought back.`)) return;
+  try {
+    await api(`/api/delete/${encodeURIComponent(cfg.journal)}/${p.name}`, { method: 'POST' });
+    if (pages[pages.length - 1]?.name === p.name) { lastSaved = null; movedSinceSave = true; }
+    toast(`Page ${p.number} deleted.`); await refreshPages();
+    if (!pages.length) return $('#viewer').close();
+    vIdx = Math.min(vIdx, pages.length - 1); showPage();
+  } catch (e) { toast(e.message); }
+};
+
+/* ---------------- settings ---------------- */
+function seg(id, key) {
+  const el = $(id);
+  const paint = () => el.querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.dataset.v === cfg[key]));
+  el.onclick = e => { const b = e.target.closest('button'); if (!b) return; cfg[key] = +b.dataset.v; store.set(key, cfg[key]); paint(); };
+  paint();
+}
+seg('#speed', 'hold'); seg('#sens', 'sens');
+$('#sound').checked = cfg.sound; $('#sound').onchange = e => { cfg.sound = e.target.checked; store.set('sound', cfg.sound); };
+$('#showMeters').checked = cfg.meters; $('#meters').classList.toggle('pinned', cfg.meters);
+$('#showMeters').onchange = e => { cfg.meters = e.target.checked; store.set('meters', cfg.meters); $('#meters').classList.toggle('pinned', cfg.meters); };
+$('#readingOn').onchange = async e => {
+  try {
+    await api('/api/reading', { method: 'POST', body: JSON.stringify({ on: e.target.checked }) });
+    toast(e.target.checked ? 'Reading on. Waiting pages are read now.' : 'Reading paused. Pages are saved and wait.');
+    await refreshStatus(); stripKey = ''; renderStrip();
+  } catch (err) { toast(err.message); }
+};
+$('#model').onchange = async e => {
+  try { await api('/api/model', { method: 'POST', body: JSON.stringify({ model: e.target.value }) }); toast('Reader set to ' + e.target.value); refreshStatus(); refreshPages(); }
+  catch (err) { toast(err.message); }
+};
+function openSettings() { $('#settings').showModal(); }
+$('#openSettings').onclick = openSettings; $('#sClose').onclick = () => $('#settings').close();
+
+/* ---------------- voice: say "Go" ----------------
+   Fully on this device: the mic level is analysed here, nothing is recorded,
+   sent or transcribed. It reacts to one short spoken word ("Go") after a
+   moment of quiet, so it isn't fooled by page rustle or a long sentence. */
+/* Voiced sound (a vowel like the "o" in Go) repeats at its pitch; paper rustle and clatter don't. */
+function isVoiced(wave, lagMin, lagMax) {
+  let best = 0;
+  for (let lag = lagMin; lag <= lagMax; lag += 2) {
+    let xy = 0, xx = 0, yy = 0;
+    for (let i = 0; i + lag < wave.length; i += 2) { const a = wave[i], b = wave[i + lag]; xy += a * b; xx += a * a; yy += b * b; }
+    const r = xy / Math.sqrt(xx * yy + 1e-12); if (r > best) best = r;
+  }
+  return best > 0.45;   // the iPhone's mic processing softens pitch; 0.6 missed real speech
+}
+const voice = { on: false, ctx: null, timer: 0, src: null };
+const MIC = { echoCancellation: true, noiseSuppression: true, autoGainControl: false };
+/* iOS runs one capture session per page: opening the mic on its own froze the camera.
+   So "Go" restarts the camera with the mic in the same stream, and listens to that. */
+async function voiceOn() {
+  // Made inside the tap, so iOS lets it run.
+  try { voice.ctx = voice.ctx || new AudioContext(); voice.ctx.resume(); } catch {}
+  voice.on = true; wantAudio = true;
+  $('#voice').classList.add('on'); $('#voiceLabel').textContent = 'Starting…';
+  await startCamera(cfg.cam, true);
+  if (!video.srcObject?.getAudioTracks().length) {
+    voiceOff();
+    return toast('Couldn\'t open the microphone. Allow it for this site (aA → Website Settings), then try again.');
+  }
+  $('#voiceLabel').textContent = 'Listening';
+  toast('Say “Go” to take a page. Nothing is recorded or sent anywhere.');
+}
+function voiceAttach(stream) {
+  clearInterval(voice.timer); try { voice.src?.disconnect(); } catch {}
+  if (!voice.on || !voice.ctx || !stream.getAudioTracks().length) return;
+  voice.ctx.resume();
+  const sr = voice.ctx.sampleRate, an = voice.ctx.createAnalyser();
+  voice.src = voice.ctx.createMediaStreamSource(new MediaStream(stream.getAudioTracks()));
+  an.fftSize = 2048; an.smoothingTimeConstant = 0.2; voice.src.connect(an);
+  const bins = new Float32Array(an.frequencyBinCount), wave = new Float32Array(an.fftSize), hz = sr / an.fftSize;
+  const lo = Math.round(250 / hz), hi = Math.round(3500 / hz);
+  const lagMin = Math.floor(sr / 400), lagMax = Math.ceil(sr / 75);   // speaking pitch range
+  const voiced = () => { an.getFloatTimeDomainData(wave); return isVoiced(wave, lagMin, lagMax); };
+  let floor = -70, speaking = false, start = 0, lastLoud = 0, quietSince = performance.now(), lastFire = 0, frames = 0, voicedFrames = 0;
+  const loop = () => {
+    an.getFloatFrequencyData(bins);
+    let e = 0; for (let i = lo; i < hi; i++) e += Math.pow(10, bins[i] / 10);
+    const db = 10 * Math.log10(e / (hi - lo) + 1e-12), now = performance.now();
+    floor = db < floor ? floor * 0.9 + db * 0.1 : floor + 0.02;      // follows the room's quiet level
+    const loud = db > floor + 20;
+    $('#voiceLvl').style.height = Math.max(0, Math.min(1, (db - floor) / 30)) * 100 + '%';
+    if (loud) {
+      if (!speaking) { speaking = true; start = now; frames = 0; voicedFrames = 0; }
+      frames++; if (voiced()) voicedFrames++;
+      lastLoud = now;
+    } else if (speaking && now - lastLoud > 300) {                   // the sound has ended
+      speaking = false;
+      const len = Math.round(lastLoud - start), quietBefore = Math.round(start - quietSince);
+      // Tuned from the phone's log: a spoken "Go" there gave 4-7 checks, 1-4 of them voiced, 300-900 ms long.
+      const ok = len >= 150 && len <= 900 && quietBefore >= 400 && voicedFrames >= 2 && voicedFrames >= frames * 0.35 && now - lastFire > 2500;
+      report(`voice ${ok ? 'TOOK PAGE' : 'ignored'}: ${len}ms, voiced ${voicedFrames}/${frames}, quiet before ${quietBefore}ms`);
+      if (ok) { lastFire = now; heardGo(); }
+      quietSince = now;
+    }
+  };
+  voice.timer = setInterval(loop, 30);  // steady rate even when the browser slows animation frames
+}
+function voiceOff() {
+  clearInterval(voice.timer); try { voice.src?.disconnect(); } catch {}
+  const had = !!video.srcObject?.getAudioTracks().length;
+  voice.on = false; wantAudio = false; voice.src = null;
+  $('#voice').classList.remove('on'); $('#voiceLabel').textContent = 'Say “Go”';
+  if (had) startCamera(cfg.cam, true);  // reopen the camera without the mic
+}
+function heardGo() {
+  const b = $('#voice'); b.classList.remove('heard'); void b.offsetWidth; b.classList.add('heard');
+  if ($('#viewer').open || $('#settings').open || $('#pairDlg').open || rec.on) return;
+  capture('voice');
+}
+$('#voice').onclick = () => voice.on ? voiceOff() : voiceOn();
+
+/* iOS plays sound only after a tap: unlock the shutter sound on the first one. */
+document.addEventListener('pointerdown', () => { try { audioCtx = audioCtx || new AudioContext(); audioCtx.resume(); } catch {} }, { once: true });
+
+/* ---------------- pairing (Mac only) ---------------- */
+$('#openPair').onclick = async () => {
+  try {
+    const { url } = await api('/api/pair');
+    if (!url) return toast('Phone mode is off. Restart Journal Scanner.');
+    $('#pairQr').src = '/pair.png'; $('#pairUrl').textContent = url.replace(/pair=.*/, 'pair=…');
+    $('#pairDlg').showModal();
+  } catch (e) { toast(e.message); }
+};
+$('#pClose').onclick = () => $('#pairDlg').close();
+$('#copyLaptop').onclick = async () => {
+  try {
+    const { narrate } = await api('/api/pair');
+    await navigator.clipboard.writeText(narrate);
+    toast('Copied. Paste it into the browser on the laptop.');
+  } catch (e) { toast('Could not copy: ' + e.message); }
+};
+$('#openNarrate').onclick = () => { location.href = '/narrate?journal=' + encodeURIComponent(cfg.journal || ''); };
+$('#openOrganize').onclick = () => { location.href = '/organize?journal=' + encodeURIComponent(cfg.journal || ''); };
+
+/* ---------------- boot ---------------- */
+(async () => {
+  await refreshStatus(); await refreshJournals(); await refreshPages();
+  if (!navigator.mediaDevices?.getUserMedia) { $('#noCam').hidden = false; setPill(0, 'This browser can\'t use the camera', ON_PHONE ? 'Open the link from the QR code in Safari.' : 'Open http://127.0.0.1:8770 in Safari or Chrome.'); return; }
+  startCamera(cfg.cam);
+  setInterval(refreshPages, 2500);
+  setInterval(async () => { const was = status.ready; await refreshStatus(); if (!was && status.ready) { await refreshJournals(); refreshPages(); } }, 5000);
+})();
+</script>
+</body>
+</html>

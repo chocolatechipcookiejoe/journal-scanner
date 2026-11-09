@@ -1,0 +1,8 @@
+# built locally on first run
+scanner_app/pagefinder
+__pycache__/
+.DS_Store
+# never commit journal pages, even by accident
+journals/
+*.jpg
+*.wav

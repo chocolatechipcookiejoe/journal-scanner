@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Organize · Journal Scanner</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='5' y='3' width='22' height='26' rx='3' fill='%23d9a35b'/><path d='M10 10h12M10 15h12M10 20h8' stroke='%231b1714' stroke-width='2' stroke-linecap='round'/></svg>">
+<style>
+:root {
+  --bg: #15120f; --panel: #1e1a16; --panel-2: #26211c; --line: #3a322a;
+  --ink: #f1e9dc; --ink-2: #b8ab98; --ink-3: #85786a;
+  --accent: #d9a35b; --accent-ink: #1b1714; --good: #8fbf7f; --bad: #e07a5f;
+  --serif: "New York", ui-serif, Georgia, serif;
+  --sans: system-ui, -apple-system, "SF Pro Text", sans-serif;
+  --thumb: 150px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--sans); overflow: hidden; }
+button, select, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+[hidden] { display: none !important; }
+.app { display: grid; grid-template-rows: auto 1fr; height: 100vh; }
+
+header { display: flex; align-items: center; gap: 14px; padding: 10px 18px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand h1 { font: 600 19px var(--serif); margin: 0; }
+.brand svg { width: 24px; height: 24px; }
+.grow { flex: 1; }
+.btn, select, input[type=text] { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 7px 11px; color: var(--ink); text-decoration: none; }
+.btn { display: inline-flex; align-items: center; gap: 7px; transition: background .15s, border-color .15s; }
+.btn:hover { background: #2f2923; border-color: #4a4036; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+.btn.primary:hover { background: #e4b16c; }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn svg { width: 16px; height: 16px; }
+.field { display: flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: 13px; }
+
+main { display: grid; grid-template-columns: 270px 1fr; min-height: 0; }
+
+/* folders */
+aside { border-right: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+aside h2 { font: 600 12px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); margin: 16px 18px 8px; }
+.folders { flex: 1; overflow: auto; padding: 0 10px 10px; }
+.folder { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; background: none; border: 1.5px dashed transparent; border-radius: 10px; padding: 9px 10px; color: var(--ink); }
+.folder:hover { background: var(--panel-2); }
+.folder.cur { background: #2f2820; border-style: solid; border-color: #4d3f2e; }
+.folder.drop { border-color: var(--accent); background: #3a2f1c; }
+.folder.dropbad { opacity: .5; }
+.folder svg { width: 26px; height: 22px; flex: none; color: var(--accent); }
+.folder .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folder .ct { color: var(--ink-3); font-size: 12px; font-variant-numeric: tabular-nums; }
+.newj { margin: 6px 18px 16px; display: flex; gap: 6px; }
+.newj input { flex: 1; min-width: 0; }
+.hint { color: var(--ink-3); font-size: 12px; margin: 0 18px 14px; line-height: 1.5; }
+
+/* pages */
+.pane { display: grid; grid-template-rows: auto 1fr auto; min-height: 0; }
+.bar { display: flex; align-items: center; gap: 10px; padding: 12px 18px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.bar h2 { font: 600 20px var(--serif); margin: 0; }
+.bar .sub { color: var(--ink-3); }
+.grid { overflow: auto; padding: 16px 18px 90px; display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--thumb), 1fr)); gap: 12px; align-content: start; }
+.card { position: relative; border-radius: 10px; border: 2px solid transparent; background: var(--panel-2); padding: 0; overflow: hidden; aspect-ratio: 3 / 4; user-select: none; }
+.card img { width: 100%; height: 100%; object-fit: contain; background: #0d0b09; display: block; pointer-events: none; }
+.card .num { position: absolute; left: 6px; bottom: 5px; font: 600 12.5px var(--sans); background: rgba(21,18,15,.85); border-radius: 6px; padding: 1px 6px; }
+.card .ok { position: absolute; right: 6px; bottom: 5px; font-size: 11px; color: #10200b; background: var(--good); border-radius: 6px; padding: 1px 5px; font-weight: 700; }
+.card .tick { position: absolute; top: 7px; left: 7px; width: 22px; height: 22px; border-radius: 50%; border: 2px solid rgba(241,233,220,.75); background: rgba(21,18,15,.5); display: grid; place-items: center; opacity: 0; transition: opacity .12s; }
+.card:hover .tick { opacity: 1; }
+.card.sel { border-color: var(--accent); }
+.card.sel .tick { opacity: 1; background: var(--accent); border-color: var(--accent); }
+.card.sel .tick::after { content: "✓"; color: var(--accent-ink); font-weight: 800; font-size: 13px; }
+.card.sel img { opacity: .8; }
+.card.anchor { box-shadow: 0 0 0 2px rgba(217,163,91,.35); }
+.empty { color: var(--ink-2); padding: 40px; text-align: center; grid-column: 1 / -1; }
+
+.action { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 18px; background: rgba(38,33,28,.96); border: 1px solid #4a4036; border-radius: 14px; box-shadow: 0 10px 40px rgba(0,0,0,.5); white-space: nowrap; }
+.pane { position: relative; }
+.action b { font-size: 15px; }
+
+dialog { background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 16px; padding: 0; max-width: 92vw; }
+dialog::backdrop { background: rgba(0,0,0,.6); }
+.dlg { padding: 20px 22px; display: grid; gap: 14px; min-width: 380px; }
+.dlg h3 { margin: 0; font: 600 19px var(--serif); }
+.dlg p { margin: 0; color: var(--ink-2); }
+.dlg .row { display: flex; gap: 8px; justify-content: flex-end; }
+.preview { width: min(1100px, 92vw); height: 90vh; display: grid; grid-template-rows: auto 1fr; }
+.preview .top { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.preview .top b { font: 600 17px var(--serif); }
+.preview .img { min-height: 0; display: grid; place-items: center; background: #0d0b09; }
+.preview .img img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.toast { position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%) translateY(20px); background: #2c251f; border: 1px solid var(--line); padding: 10px 16px; border-radius: 10px; opacity: 0; transition: all .25s; pointer-events: none; z-index: 9; }
+.toast.show { opacity: 1; transform: translateX(-50%); }
+.dragghost { position: fixed; top: -100px; left: -100px; background: var(--accent); color: var(--accent-ink); font-weight: 700; padding: 6px 12px; border-radius: 999px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">
+      <svg viewBox="0 0 32 32"><rect x="5" y="3" width="22" height="26" rx="3" fill="#d9a35b"/><path d="M10 10h12M10 15h12M10 20h8" stroke="#1b1714" stroke-width="2" stroke-linecap="round"/></svg>
+      <h1>Organize</h1>
+    </div>
+    <span class="field" style="color:var(--ink-3)">Split pages into the right journals</span>
+    <div class="grow"></div>
+    <label class="field">Size <input type="range" id="size" min="100" max="300" step="10"></label>
+    <a class="btn" href="/narrate">Narrate</a>
+    <a class="btn" href="/">Scanner</a>
+  </header>
+
+  <main>
+    <aside>
+      <h2>Journals</h2>
+      <div class="folders" id="folders"></div>
+      <form class="newj" id="newForm"><input type="text" id="newName" placeholder="New journal, e.g. Journal 2016" maxlength="80"><button class="btn" type="submit">Add</button></form>
+      <div class="hint">Click a page, then <b>Shift-click</b> another to select everything between. Drag the selection onto a journal here, or use <b>Move to</b> below.</div>
+    </aside>
+
+    <section class="pane">
+      <div class="bar">
+        <h2 id="title">–</h2><span class="sub" id="count"></span>
+        <button class="btn" id="rename" title="Rename this journal">Rename</button>
+        <div class="grow"></div>
+        <button class="btn" id="all">Select all</button>
+        <button class="btn" id="none">Clear</button>
+      </div>
+      <div class="grid" id="grid"><div class="empty">Loading…</div></div>
+      <div class="action" id="action" hidden>
+        <b id="selText"></b>
+        <span style="color:var(--ink-3)">Move to</span>
+        <select id="target"></select>
+        <button class="btn primary" id="move">Move</button>
+        <button class="btn" id="clear2">Clear</button>
+      </div>
+    </section>
+  </main>
+</div>
+
+<dialog id="confirm"><form method="dialog" class="dlg">
+  <h3 id="cTitle"></h3><p id="cText"></p>
+  <div class="row"><button class="btn" value="no">Cancel</button><button class="btn primary" value="yes" id="cYes">Move</button></div>
+</form></dialog>
+<dialog id="renameDlg"><form method="dialog" class="dlg" id="renameForm">
+  <h3>Rename journal</h3><input type="text" id="renameName" maxlength="80">
+  <div class="row"><button class="btn" value="no" formnovalidate>Cancel</button><button class="btn primary" value="yes">Rename</button></div>
+</form></dialog>
+<dialog id="preview" class="preview">
+  <div class="top"><b id="pTitle"></b><span class="grow"></span>
+    <button class="btn" id="pSel"></button><button class="btn" id="pPrev">←</button><button class="btn" id="pNext">→</button><button class="btn" id="pClose">✕</button></div>
+  <div class="img"><img id="pImg" alt=""></div>
+</dialog>
+<div class="toast" id="toast"></div>
+<div class="dragghost" id="ghost"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const enc = encodeURIComponent;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('jso.' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('jso.' + k, JSON.stringify(v)); } catch {} }
+};
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+const post = (path, body) => api(path, { method: 'POST', body: JSON.stringify(body) });
+function toast(msg, ms = 3200) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), ms); }
+
+let journals = [], journal = null, pages = [], sel = new Set(), anchor = null, pv = -1;
+
+/* ---------- journals (folders) ---------- */
+const FOLDER = '<svg viewBox="0 0 26 22" fill="none"><path d="M1.5 4.5a2 2 0 0 1 2-2h6l2.4 2.6h10.6a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-19a2 2 0 0 1-2-2z" fill="currentColor" opacity=".25" stroke="currentColor" stroke-width="1.5"/></svg>';
+async function loadJournals() {
+  journals = (await api('/api/journals')).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  if (!journal || !journals.some(j => j.name === journal)) {
+    const want = new URLSearchParams(location.search).get('journal') || store.get('journal');
+    journal = journals.find(j => j.name === want)?.name || journals.slice().sort((a, b) => b.pages - a.pages)[0]?.name || null;
+  }
+  renderFolders();
+}
+function renderFolders() {
+  $('#folders').innerHTML = journals.map(j => `<button class="folder${j.name === journal ? ' cur' : ''}" data-name="${esc(j.name)}">${FOLDER}<span class="nm">${esc(j.name)}</span><span class="ct">${j.pages}</span></button>`).join('')
+    || '<div class="hint">No journals yet. Is your vault open?</div>';
+  const others = journals.filter(j => j.name !== journal);
+  $('#target').innerHTML = others.map(j => `<option value="${esc(j.name)}">${esc(j.name)}</option>`).join('') + '<option value="__new">New journal…</option>';
+  const last = store.get('target'); if (others.some(j => j.name === last)) $('#target').value = last;
+}
+$('#folders').addEventListener('click', e => { const f = e.target.closest('.folder'); if (f && f.dataset.name !== journal) open(f.dataset.name); });
+async function open(name) { journal = name; store.set('journal', name); sel.clear(); anchor = null; renderFolders(); await loadPages(); }
+
+$('#newForm').onsubmit = async e => {
+  e.preventDefault();
+  const name = $('#newName').value.trim(); if (!name) return $('#newName').focus();
+  try { const r = await post('/api/journal-new', { name }); $('#newName').value = ''; await loadJournals(); toast(`Made “${r.name}”. Drag pages onto it.`); }
+  catch (err) { toast(err.message); }
+};
+$('#rename').onclick = () => { $('#renameName').value = journal; $('#renameDlg').showModal(); $('#renameName').select(); };
+$('#renameDlg').addEventListener('close', async () => {
+  if ($('#renameDlg').returnValue !== 'yes') return;
+  const to = $('#renameName').value.trim(); if (!to || to === journal) return;
+  try { const r = await post('/api/journal-rename', { from: journal, to }); journal = r.name; store.set('journal', r.name); await loadJournals(); await loadPages(); toast('Renamed.'); }
+  catch (err) { toast(err.message, 5000); }
+});
+
+/* ---------- pages ---------- */
+async function loadPages() {
+  if (!journal) { $('#grid').innerHTML = '<div class="empty">No journals yet.</div>'; return; }
+  pages = await api('/api/pages/' + enc(journal));
+  $('#title').textContent = journal;
+  $('#count').textContent = `${pages.length} photo${pages.length === 1 ? '' : 's'}`;
+  for (const n of [...sel]) if (!pages.some(p => p.name === n)) sel.delete(n);
+  $('#grid').innerHTML = pages.map((p, i) => `<div class="card" draggable="true" data-i="${i}" title="Photo ${p.number}. Double-click to look closer.">
+      <img loading="lazy" src="/thumb/${enc(journal)}/${p.name}" alt=""><span class="tick"></span><span class="num">${p.number}</span>${p.spoken ? '<span class="ok">read aloud</span>' : ''}</div>`).join('')
+    || '<div class="empty">This journal is empty. Drag pages onto it from another journal.</div>';
+  renderSel();
+}
+function renderSel() {
+  [...$('#grid').children].forEach(c => { const p = pages[+c.dataset.i]; if (!p) return; c.classList.toggle('sel', sel.has(p.name)); c.classList.toggle('anchor', anchor === +c.dataset.i); });
+  const n = sel.size;
+  $('#action').hidden = !n;
+  if (n) {
+    const nums = pages.filter(p => sel.has(p.name)).map(p => p.number);
+    $('#selText').textContent = `${n} photo${n === 1 ? '' : 's'} selected` + (n > 1 ? ` (${nums[0]}–${nums[nums.length - 1]})` : ` (${nums[0]})`);
+  }
+}
+$('#grid').addEventListener('click', e => {
+  const c = e.target.closest('.card'); if (!c) return;
+  const i = +c.dataset.i, name = pages[i].name;
+  if (e.shiftKey && anchor !== null) {
+    const [a, b] = anchor < i ? [anchor, i] : [i, anchor];
+    for (let k = a; k <= b; k++) sel.add(pages[k].name);
+  } else {
+    sel.has(name) ? sel.delete(name) : sel.add(name);
+    anchor = i;
+  }
+  renderSel();
+});
+$('#grid').addEventListener('dblclick', e => { const c = e.target.closest('.card'); if (c) showPreview(+c.dataset.i); });
+$('#all').onclick = () => { pages.forEach(p => sel.add(p.name)); renderSel(); };
+$('#none').onclick = $('#clear2').onclick = () => { sel.clear(); anchor = null; renderSel(); };
+
+/* ---------- moving ---------- */
+async function moveTo(dest) {
+  const list = pages.filter(p => sel.has(p.name)).map(p => p.name);
+  if (!list.length) return;
+  if (dest === '__new') {
+    const name = prompt('Name the new journal (e.g. Journal 2016):', ''); if (!name) return;
+    try { dest = (await post('/api/journal-new', { name: name.trim() })).name; } catch (err) { return toast(err.message, 5000); }
+  }
+  const target = journals.find(j => j.name === dest);
+  $('#cTitle').textContent = `Move ${list.length} photo${list.length === 1 ? '' : 's'} to “${dest}”?`;
+  $('#cText').textContent = `They go after its last page (${target?.pages || 0}), in the same order, with their readings, recordings and notes. They're numbered to fit there; nothing is deleted.`;
+  $('#confirm').returnValue = ''; $('#confirm').showModal();
+  await new Promise(r => $('#confirm').addEventListener('close', r, { once: true }));
+  if ($('#confirm').returnValue !== 'yes') return;
+  try {
+    const r = await post('/api/move', { from: journal, to: dest, pages: list });
+    store.set('target', dest);
+    const nn = r.moved.map(m => parseInt(m[1].slice(1)));
+    sel.clear(); anchor = null;
+    await loadJournals(); await loadPages();
+    toast(`Moved ${r.moved.length} to “${dest}” (its photos ${nn[0]}${nn.length > 1 ? '–' + nn[nn.length - 1] : ''}).`, 4500);
+  } catch (err) { toast('Not moved: ' + err.message, 6000); await loadPages(); }
+}
+$('#move').onclick = () => moveTo($('#target').value);
+
+// drag a selection onto a folder
+$('#grid').addEventListener('dragstart', e => {
+  const c = e.target.closest('.card'); if (!c) return;
+  const name = pages[+c.dataset.i].name;
+  if (!sel.has(name)) { sel.clear(); sel.add(name); anchor = +c.dataset.i; renderSel(); }
+  e.dataTransfer.setData('text/plain', 'pages');
+  e.dataTransfer.effectAllowed = 'move';
+  const g = $('#ghost'); g.textContent = `${sel.size} photo${sel.size === 1 ? '' : 's'}`;
+  e.dataTransfer.setDragImage(g, 10, 10);
+});
+$('#folders').addEventListener('dragover', e => {
+  const f = e.target.closest('.folder'); if (!f || !sel.size) return;
+  if (f.dataset.name === journal) { f.classList.add('dropbad'); return; }
+  e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+  document.querySelectorAll('.folder.drop').forEach(x => x !== f && x.classList.remove('drop'));
+  f.classList.add('drop');
+});
+$('#folders').addEventListener('dragleave', e => { const f = e.target.closest('.folder'); if (f && !f.contains(e.relatedTarget)) f.classList.remove('drop', 'dropbad'); });
+$('#folders').addEventListener('drop', e => {
+  const f = e.target.closest('.folder'); document.querySelectorAll('.folder').forEach(x => x.classList.remove('drop', 'dropbad'));
+  if (!f || f.dataset.name === journal) return;
+  e.preventDefault(); moveTo(f.dataset.name);
+});
+document.addEventListener('dragend', () => document.querySelectorAll('.folder').forEach(x => x.classList.remove('drop', 'dropbad')));
+
+/* ---------- a closer look ---------- */
+function showPreview(i) {
+  pv = Math.max(0, Math.min(pages.length - 1, i)); const p = pages[pv];
+  $('#pTitle').textContent = `Photo ${p.number} of ${pages.length}`;
+  $('#pImg').src = `/img/${enc(journal)}/${p.name}`;
+  $('#pSel').textContent = sel.has(p.name) ? '✓ Selected' : 'Select';
+  $('#pSel').classList.toggle('primary', sel.has(p.name));
+  if (!$('#preview').open) $('#preview').showModal();
+}
+$('#pPrev').onclick = () => showPreview(pv - 1);
+$('#pNext').onclick = () => showPreview(pv + 1);
+$('#pClose').onclick = () => $('#preview').close();
+$('#pSel').onclick = () => { const n = pages[pv].name; sel.has(n) ? sel.delete(n) : sel.add(n); anchor = pv; renderSel(); showPreview(pv); };
+$('#preview').addEventListener('click', e => { if (e.target === $('#preview')) $('#preview').close(); });
+
+document.addEventListener('keydown', e => {
+  if ($('#preview').open) {
+    if (e.key === 'ArrowRight') { e.preventDefault(); showPreview(pv + 1); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); showPreview(pv - 1); }
+    else if (e.key === ' ') { e.preventDefault(); $('#pSel').click(); }
+    return;
+  }
+  if (e.target.matches('input, select, textarea') || document.querySelector('dialog[open]')) return;
+  if ((e.metaKey || e.ctrlKey) && e.key === 'a') { e.preventDefault(); $('#all').click(); }
+  else if (e.key === 'Escape') $('#none').click();
+});
+
+/* ---------- size ---------- */
+const size = store.get('size', 150);
+$('#size').value = size; document.documentElement.style.setProperty('--thumb', size + 'px');
+$('#size').oninput = e => { document.documentElement.style.setProperty('--thumb', e.target.value + 'px'); store.set('size', +e.target.value); };
+
+(async () => { try { await loadJournals(); await loadPages(); } catch (e) { $('#grid').innerHTML = `<div class="empty">Couldn't load: ${esc(e.message)}</div>`; } })();
+</script>
+</body>
+</html>

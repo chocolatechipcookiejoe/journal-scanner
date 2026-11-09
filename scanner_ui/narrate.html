@@ -1,0 +1,692 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Narrate · Journal Scanner</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='5' y='3' width='22' height='26' rx='3' fill='%23d9a35b'/><path d='M10 10h12M10 15h12M10 20h8' stroke='%231b1714' stroke-width='2' stroke-linecap='round'/></svg>">
+<style>
+:root {
+  --bg: #15120f; --panel: #1e1a16; --panel-2: #26211c; --line: #3a322a;
+  --ink: #f1e9dc; --ink-2: #b8ab98; --ink-3: #85786a;
+  --accent: #d9a35b; --accent-ink: #1b1714; --good: #8fbf7f; --warn: #e2b04a; --bad: #e07a5f; --rec: #e0604f;
+  --serif: "New York", ui-serif, Georgia, serif;
+  --sans: system-ui, -apple-system, "SF Pro Text", sans-serif;
+  --r: 14px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--sans); overflow: hidden; }
+button, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+[hidden] { display: none !important; }
+.app { display: grid; grid-template-rows: auto 1fr auto; height: 100vh; }
+
+header { display: flex; align-items: center; gap: 14px; padding: 10px 18px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand h1 { font: 600 19px var(--serif); margin: 0; }
+.brand svg { width: 24px; height: 24px; }
+.field { display: flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: 13px; }
+select, .btn { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 7px 11px; }
+.btn { display: inline-flex; align-items: center; gap: 7px; transition: background .15s, border-color .15s; text-decoration: none; color: var(--ink); }
+.btn:hover { background: #2f2923; border-color: #4a4036; }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+.btn.primary:hover { background: #e4b16c; }
+.btn svg { width: 16px; height: 16px; }
+.grow { flex: 1; }
+.progress { color: var(--ink-2); font-size: 13px; display: flex; align-items: center; gap: 10px; }
+.bar { width: 140px; height: 6px; background: var(--panel-2); border-radius: 3px; overflow: hidden; }
+.bar span { display: block; height: 100%; background: var(--good); width: 0; transition: width .3s; }
+.progress.train { border-left: 1px solid var(--line); padding-left: 14px; line-height: 1.15; }
+.progress.train .big { font: 600 22px var(--serif); color: var(--ink); }
+.progress.train small { color: var(--ink-3); font-size: 11.5px; }
+.progress.train .bar span { background: var(--accent); }
+.progress.train.bump .big { animation: bump .6s ease-out; }
+@keyframes bump { 30% { transform: scale(1.35); color: var(--good); } }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.seg button { background: var(--panel-2); border: 0; padding: 6px 10px; color: var(--ink-2); font-size: 13px; }
+.seg button.on { background: #3a3128; color: var(--ink); }
+body.flow .micbtn, body.flow .level { display: none; }
+
+main { display: grid; grid-template-columns: 1fr 420px; min-height: 0; }
+
+/* the page */
+.stage { position: relative; min-height: 0; background: #0d0b09; overflow: auto; cursor: zoom-in; }
+.pages { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 10px; height: 100%; padding: 14px; }
+.pages img { width: 100%; height: 100%; min-height: 0; object-fit: contain; }
+.stage.zoom { cursor: zoom-out; }
+.stage.zoom .pages { height: auto; }
+.stage.zoom .pages img { height: auto; }
+.stage .tag { position: absolute; z-index: 1; top: 14px; left: 18px; background: rgba(21,18,15,.82); border: 1px solid rgba(255,255,255,.08); border-radius: 999px; padding: 5px 12px; font-size: 13px; color: var(--ink-2); }
+.stage .tag b { color: var(--ink); font: 600 15px var(--serif); margin-right: 4px; }
+.empty { color: var(--ink-2); text-align: center; padding: 40px; }
+
+/* the right side */
+aside { border-left: 1px solid var(--line); background: var(--panel); display: grid; grid-template-rows: auto auto 1fr auto auto auto; min-height: 0; }
+.mic { display: flex; align-items: center; gap: 14px; padding: 16px 18px 12px; }
+.micbtn { width: 58px; height: 58px; border-radius: 50%; border: 2px solid var(--line); background: var(--panel-2); display: grid; place-items: center; flex: none; transition: all .15s; }
+.micbtn svg { width: 26px; height: 26px; }
+.micbtn:hover { border-color: #5a4d40; }
+.micbtn.on { background: var(--rec); border-color: var(--rec); color: #fff; box-shadow: 0 0 0 0 rgba(224,96,79,.6); animation: pulse 1.6s infinite; }
+@keyframes pulse { 70% { box-shadow: 0 0 0 12px rgba(224,96,79,0); } 100% { box-shadow: 0 0 0 0 rgba(224,96,79,0); } }
+.micinfo b { display: block; font-size: 15px; }
+.micinfo span { color: var(--ink-3); font-size: 12.5px; }
+.level { height: 4px; margin: 0 18px; background: var(--panel-2); border-radius: 2px; overflow: hidden; }
+.level span { display: block; height: 100%; width: 0; background: var(--good); transition: width .08s; }
+.text { min-height: 0; display: flex; flex-direction: column; padding: 12px 18px 0; gap: 8px; }
+.text .box { flex: 1; }
+.label { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); display: flex; justify-content: space-between; }
+.label i { font-style: normal; text-transform: none; letter-spacing: 0; }
+.said { font-size: 13px; color: var(--ink-2); background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; max-height: 110px; overflow: auto; white-space: pre-wrap; }
+.said b { color: var(--good); font-weight: 600; }
+.box { position: relative; min-height: 0; display: flex; flex-direction: column; background: #171310; border: 1px solid var(--line); border-radius: 12px; }
+.box:focus-within { border-color: #6b5a44; }
+textarea { flex: 1; min-height: 60px; resize: none; background: transparent; border: 0; outline: 0; padding: 12px 14px 4px; font: 17px/1.55 var(--serif); }
+.interim { padding: 0 14px 12px; font: italic 17px/1.55 var(--serif); color: var(--ink-3); min-height: 1.6em; }
+.saving { font-size: 12px; color: var(--ink-3); padding: 6px 2px 0; }
+.actions { display: flex; gap: 8px; padding: 12px 18px; }
+.actions .btn.primary { flex: 1; justify-content: center; padding: 11px 14px; font-size: 15px; }
+kbd { font: 11px var(--sans); border: 1px solid currentColor; border-radius: 4px; padding: 0 4px; opacity: .75; margin-left: 4px; }
+.marks { display: flex; gap: 8px; padding: 0 18px 12px; }
+.marks .btn { flex: 1; justify-content: center; font-size: 12.5px; padding: 7px 6px; gap: 4px; }
+.marks .btn.open { background: #3a2f1c; border-color: var(--accent); color: var(--accent); }
+.keys { padding: 0 18px 14px; color: var(--ink-3); font-size: 12px; line-height: 1.7; }
+.keys kbd { color: var(--ink-2); margin: 0 2px; }
+
+/* the strip of pages */
+.strip { display: flex; gap: 8px; padding: 10px 14px; overflow-x: auto; border-top: 1px solid var(--line); background: var(--panel); scroll-behavior: smooth; }
+.thumb { flex: none; width: 58px; height: 74px; border-radius: 6px; border: 2px solid transparent; position: relative; overflow: hidden; background: var(--panel-2); padding: 0; }
+.thumb img { width: 100%; height: 100%; object-fit: cover; opacity: .7; }
+.thumb.cur { border-color: var(--accent); }
+.thumb.cur img { opacity: 1; }
+.thumb.blank { opacity: .45; width: 40px; }
+.thumb span { position: absolute; left: 3px; bottom: 2px; font-size: 10.5px; text-shadow: 0 1px 2px #000; }
+.thumb i { position: absolute; right: 3px; top: 3px; width: 15px; height: 15px; border-radius: 50%; display: grid; place-items: center; font: 700 10px var(--sans); font-style: normal; }
+.thumb i.done { background: var(--good); color: #10200b; }
+.thumb i.draft { background: var(--warn); color: #2a1f05; }
+.thumb i.busy { background: var(--ink-3); color: #000; }
+
+.toast { position: fixed; left: 50%; bottom: 110px; transform: translateX(-50%) translateY(20px); background: #2c251f; border: 1px solid var(--line); padding: 10px 16px; border-radius: 10px; opacity: 0; transition: all .25s; pointer-events: none; z-index: 9; }
+.toast.show { opacity: 1; transform: translateX(-50%); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">
+      <svg viewBox="0 0 32 32"><rect x="5" y="3" width="22" height="26" rx="3" fill="#d9a35b"/><path d="M10 10h12M10 15h12M10 20h8" stroke="#1b1714" stroke-width="2" stroke-linecap="round"/></svg>
+      <h1>Narrate</h1>
+    </div>
+    <label class="field">Journal <select id="journal"></select></label>
+    <div class="seg" title="Show the page turned upright and cropped, or the photo as taken">
+      <button id="vUp" class="on">Upright</button><button id="vPhoto">Photo</button>
+    </div>
+    <div class="seg" title="Who listens: Wispr Flow types into the box while you hold its key, or this Mac listens through the mic">
+      <button id="vFlow">Flow</button><button id="vMac">Mac</button>
+    </div>
+    <div class="grow"></div>
+    <div class="progress" title="This journal"><span id="progText">–</span><div class="bar"><span id="progBar"></span></div></div>
+    <div class="progress train" id="train" title="Pages read aloud in all journals"><span class="big" id="trainNum">–</span><span>for training<br><small id="trainSub"></small></span><div class="bar"><span id="trainBar"></span></div></div>
+    <a class="btn" href="/organize" id="toOrganize" title="Move pages between journals">Organize</a>
+    <a class="btn" href="/" id="back" title="Back to the scanner">Scanner</a>
+  </header>
+
+  <main>
+    <section class="stage" id="stage" title="Click to zoom"><div class="empty" id="empty">Loading pages…</div></section>
+
+    <aside>
+      <div class="mic">
+        <button class="micbtn" id="mic" title="Start or stop listening (Space)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5"/></svg>
+        </button>
+        <div class="micinfo"><b id="micState">Press Space to start talking</b><span id="micSub">Everything stays on this Mac.</span></div>
+      </div>
+      <div class="level"><span id="level"></span></div>
+
+      <div class="text">
+        <div id="saidWrap" hidden>
+          <div class="label">Saved <i id="saidState"></i></div>
+          
+        </div>
+        <div class="box">
+          <div class="label" style="padding:10px 14px 0">This page <i id="pageLabel"></i></div>
+          <textarea id="draft" spellcheck="false" placeholder="What you say shows up here. You can fix words by clicking in."></textarea>
+          <div class="interim" id="interim"></div>
+        </div>
+        <div class="saving" id="saving"></div>
+      </div>
+
+      <div class="actions">
+        <button class="btn" id="prev" title="Previous page (←)">←</button>
+        <button class="btn primary" id="next" title="Save this page and go to the next (Enter or →)">Save &amp; next page<kbd>↵</kbd></button>
+      </div>
+      <div class="marks">
+        <button class="btn" id="mU" title="Press when the underlined words start, and again when they end (U)"><u>Underline</u><kbd>U</kbd></button>
+        <button class="btn" id="mD" title="A line drawn across the page (D)">Divider<kbd>D</kbd></button>
+        <button class="btn" id="mB" title="Start a list item: arrow, dot or dash (B)">• List<kbd>B</kbd></button>
+        <button class="btn" id="mS" title="Star what comes next (S)">★ Star<kbd>S</kbd></button>
+      </div>
+      <div class="keys"><kbd>Space</kbd> talk / pause · <kbd>↵</kbd> or <kbd>→</kbd> save &amp; next · <kbd>←</kbd> back · <kbd>U</kbd> underline on/off · <kbd>D</kbd> divider · <kbd>B</kbd> list item · <kbd>S</kbd> star · while typing in the text, <kbd>⌘↵</kbd> saves &amp; next, <kbd>Esc</kbd> leaves the text</div>
+    </aside>
+  </main>
+
+  <nav class="strip" id="strip"></nav>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('jsn.' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('jsn.' + k, JSON.stringify(v)); } catch {} }
+};
+const enc = encodeURIComponent;
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+function toast(msg, ms = 2600) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), ms); }
+function report(msg) { try { fetch('/api/clientlog', { method: 'POST', body: 'narrate: ' + String(msg).slice(0, 280) }); } catch {} }
+
+let journal = null, pages = [], idx = 0, upright = store.get('upright', true), flow = store.get('flow', false);
+const drafts = {};        // page -> text (what the box shows)
+const chains = {};        // page -> promise of that page's pieces still turning into text
+const unsaved = new Set();
+
+/* ---------- pages ---------- */
+async function loadJournals() {
+  const js = await api('/api/journals');
+  const sel = $('#journal');
+  sel.innerHTML = js.map(j => `<option value="${j.name.replace(/"/g, '&quot;')}">${j.name} (${j.pages})</option>`).join('');
+  const want = new URLSearchParams(location.search).get('journal') || store.get('journal');
+  journal = js.find(j => j.name === want)?.name || js[0]?.name;
+  if (!journal) { $('#empty').textContent = 'No journals yet. Is your vault open?'; return; }
+  sel.value = journal;
+  await loadPages(true);
+}
+async function loadPages(first) {
+  const rows = await api('/api/narrate/' + enc(journal));
+  rows.forEach(r => r.name = r.id);   // each side of a spread is its own page
+  pages = rows;
+  for (const p of rows) if (!(p.name in drafts) || (!unsaved.has(p.name) && !chains[p.name])) drafts[p.name] = p.draft;
+  if (first) {
+    const saved = store.get('pos.' + journal);
+    const i = rows.findIndex(p => p.name === saved);
+    idx = i >= 0 ? i : Math.max(0, rows.findIndex(p => !p.spoken && !p.blank));
+    show();
+  } else { renderStrip(); renderSaid(); }
+  renderProgress();
+}
+function imgs(p) {
+  if (upright && p.crop) return [`/crop/${enc(journal)}/${p.crop}`];
+  return [`/img/${enc(journal)}/${p.photo}`];
+}
+const label = p => p.number ? `Page ${p.number}` : 'Blank side';
+// What the box holds: your unsaved words, or else the saved reading (so you can edit it in place)
+const said = name => pages.find(p => p.name === name)?.said || '';
+const textOf = name => drafts[name] || said(name);
+const total = () => pages.filter(p => p.number).length;
+function where(p) { return `photo ${p.photoNumber}${p.side ? ', ' + p.side.toLowerCase() + ' side' : ''}`;
+}
+function show() {
+  const p = pages[idx];
+  if (!p) { $('#stage').innerHTML = '<div class="empty">No pages in this journal yet.</div>'; return; }
+  store.set('pos.' + journal, p.name);
+  const src = imgs(p), st = $('#stage');
+  st.innerHTML = `<div class="tag">${p.number ? `<b>${p.number}</b> of ${total()}` : '<b>Blank</b>'} · ${where(p)}</div><div class="pages">` + src.map(s => `<img src="${s}" alt="">`).join('') + '</div>';
+  st.scrollTop = 0;
+  $('#draft').value = textOf(p.name);
+  $('#interim').textContent = '';
+  $('#pageLabel').textContent = p.number ? 'page ' + p.number : 'blank side';
+  $('#prev').disabled = idx === 0;
+  renderSaid(); renderStrip(); renderProgress(); renderMarks();
+  if (flow) focusBox();
+  // load the next page's picture early so flipping is instant
+  const n = pages[idx + 1]; if (n) imgs(n).forEach(s => { const i = new Image(); i.src = s; });
+}
+function renderSaid() {
+  const p = pages[idx]; if (!p) return;
+  const busy = p.voice && !['done'].includes(p.voice) && !String(p.voice).startsWith('failed');
+  const edited = p.said && drafts[p.name] && drafts[p.name].trim() !== p.said.trim();
+  $('#saidWrap').hidden = !p.said;
+  $('#saidState').textContent = String(p.voice || '').startsWith('failed') ? p.voice : busy ? 'matching it to the page…'
+    : edited ? 'edited: Save & next page saves the change' : p.spoken ? '✓ saved as "your reading". Edit it in the box' : '';
+}
+function renderStrip() {
+  const strip = $('#strip');
+  if (strip.childElementCount !== pages.length) {
+    strip.innerHTML = pages.map((p, i) => `<button class="thumb${p.blank ? ' blank' : ''}" data-i="${i}" title="${label(p)} (${where(p)})"><img loading="lazy" src="${p.crop ? `/crop/${enc(journal)}/${p.crop}` : `/img/${enc(journal)}/${p.photo}`}" alt=""><span>${p.number || '–'}</span><i></i></button>`).join('');
+  }
+  [...strip.children].forEach((b, i) => {
+    const p = pages[i], mark = b.querySelector('i');
+    b.classList.toggle('cur', i === idx);
+    const busy = p.voice && p.voice !== 'done' && !String(p.voice).startsWith('failed');
+    const draft = (drafts[p.name] || '').trim();
+    mark.className = busy ? 'busy' : p.spoken ? 'done' : draft ? 'draft' : '';
+    mark.textContent = busy ? '…' : p.spoken ? '✓' : draft ? '•' : '';
+  });
+  strip.children[idx]?.scrollIntoView({ block: 'nearest', inline: 'center' });
+}
+let trainLast = null;
+async function renderTraining() {
+  try {
+    const t = await api('/api/narrate-totals');
+    $('#trainNum').textContent = `${t.total}/${t.goal}`;
+    $('#trainSub').textContent = `${t.journals.length} journal${t.journals.length === 1 ? '' : 's'}${t.total >= t.goal ? ' · goal reached!' : ''}`;
+    $('#trainBar').style.width = Math.min(100, 100 * t.total / t.goal) + '%';
+    $('#train').title = 'Pages read aloud, all journals:\n' + (t.journals.map(j => `${j.name}: ${j.pages}`).join('\n') || 'none yet');
+    if (trainLast !== null && t.total > trainLast) { const el = $('#train'); el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
+    trainLast = t.total;
+  } catch {}
+}
+function renderProgress() {
+  const n = pages.filter(p => p.spoken && p.number).length, all = total();
+  $('#progText').textContent = `${n} of ${all} pages read aloud`;
+  $('#progBar').style.width = all ? (100 * n / all) + '%' : 0;
+}
+function go(i) {
+  if (i < 0 || i >= pages.length || i === idx) return;
+  cut(true); idx = i; show();
+}
+$('#strip').onclick = e => { const b = e.target.closest('.thumb'); if (b) go(+b.dataset.i); };
+$('#toOrganize').onclick = e => { e.currentTarget.href = '/organize?journal=' + enc(journal || ''); };
+$('#journal').onchange = async e => { cut(true); journal = e.target.value; store.set('journal', journal); $('#strip').innerHTML = ''; await loadPages(true); };
+$('#stage').onclick = () => $('#stage').classList.toggle('zoom');
+function setView(up) { upright = up; store.set('upright', up); $('#vUp').classList.toggle('on', up); $('#vPhoto').classList.toggle('on', !up); if (pages.length) show(); }
+$('#vUp').onclick = () => setView(true); $('#vPhoto').onclick = () => setView(false); setView(upright);
+
+/* ---------- saving the text ---------- */
+let saveT = null;
+function saveSoon(page) {
+  unsaved.add(page); $('#saving').textContent = 'Saving…';
+  clearTimeout(saveT); saveT = setTimeout(() => saveNow(), 700);
+}
+async function saveNow() {
+  for (const page of [...unsaved]) {
+    try {
+      await api(`/api/narrate/draft/${enc(journal)}/${page}`, { method: 'POST', body: JSON.stringify({ text: drafts[page] || '' }) });
+      unsaved.delete(page);
+    } catch (e) { $('#saving').textContent = 'Not saved yet: ' + e.message; return; }
+  }
+  $('#saving').textContent = 'Saved on the Mac ✓';
+}
+let boxWas = '';
+$('#draft').addEventListener('focus', () => { boxWas = $('#draft').value; });
+$('#draft').addEventListener('beforeinput', () => { boxWas = $('#draft').value; });
+$('#draft').addEventListener('input', e => { if (flow) flowInput(e); });
+$('#draft').addEventListener('input', () => { const p = pages[idx]; drafts[p.name] = $('#draft').value; delete uOpen[p.name]; renderMarks(); saveSoon(p.name); renderStrip(); renderSaid(); });
+/* ---------- spoken commands: say the formatting, it becomes marks ---------- */
+// spoken-start
+// What you say is the only punctuation: the speech model's own periods and commas are dropped,
+// and spoken words become marks. Typed text is never changed.
+//   period · comma · question mark · exclamation point · colon · semicolon · dot dot dot
+//   quote … quote (or open quote / end quote) · parenthesis … parenthesis (or open / close parenthesis) · slash · hyphen · dash · arrow · ampersand
+//   note … end note -> [note: …] (goes to the page's notes) · new line · list item · divider · "<words> underlined" -> <u>words</u> · "gold star" -> ★ right there
+const SPOKEN = [
+  [/\b(?:end (?:of )?(?:the )?note|close note|back to the page)\b/gi, 'o'], [/\b(?:side note|note)\b/gi, 'O'],
+  [/\b(?:page divider|divider line|line divider|line across the page|divider)\b/gi, 'D'],
+  [/\b(?:(?:new|next) )?(?:list[ -]?items?|listed item|list them)\b/gi, 'B'],
+  [/\b(?:(?:new|noo|nu|knew|gnu|neu|nyu)[ -]?lines?|next[ -]?line|new paragraph|line break)\b/gi, 'N'],
+  [/\b(?:underlined|underline that|underline)\b/gi, 'U'],
+  [/\b(?:gold stars?|starred|star that)\b/gi, 'S'],
+  [/\b(?:open quote|begin quote)\b/gi, 'Q'], [/\b(?:end quote|close quote|unquote)\b/gi, 'q'], [/\bquote\b/gi, 'T'],
+  [/\b(?:open|left|begin) (?:parenthes[ie]s|paren|bracket)\b/gi, '('], [/\b(?:close|closed|right|end) (?:parenthes[ie]s|paren|bracket)\b/gi, ')'], [/\bparenthes[ie]s\b/gi, 'P'],
+  [/\bquestion mark\b/gi, '?'], [/\bexclamation (?:point|mark)\b/gi, '!'],
+  [/\bsemi ?colon\b/gi, ';'], [/\bcolon\b/gi, ':'], [/\b(?:period|full stop)\b/gi, '.'], [/\bcomma\b/gi, ','],
+  [/\b(?:ellipsis|dot[\s,.]+dot[\s,.]+dot)\b/gi, '…'], [/\bslash\b/gi, '/'], [/\bhyphen\b/gi, '-'], [/\bdash\b/gi, '–'],
+  [/\barrow\b/gi, '>'], [/\b(?:ampersand|and sign)\b/gi, '&'],
+];
+const TOK = '\u0001';   // a spoken command, still to be placed
+function heard(piece) {
+  // 1. drop the speech model's own punctuation (keep it inside numbers like 9:30 or 3.5)
+  let t = piece.replace(/(?:[ \t]*\.){3,}|…/g, ' dot dot dot ').replace(/["“”]/g, '').replace(/(\d)([.:,])(?=\d)/g, '$1\u0002$2');
+  t = t.replace(/[.?!…]+(?=\s|$)/g, ' \u0003').replace(/[,;:]+(?=\s|$)/g, '');
+  t = t.replace(/\u0002/g, '');
+  // 2. spoken commands -> tokens
+  for (const [re, k] of SPOKEN) t = t.replace(re, ' ' + TOK + k + ' ');
+  // 3. a word the model capitalised only because of its own sentence end goes back to lower case,
+  //    but not after a spoken command (a new line, bullet, period … keeps its capital) or "I"
+  t = t.replace(/(\S*)\s*\u0003\s*([A-Z])(?=[a-z])/g, (m, prev, c) => prev + ' ' + (prev.startsWith(TOK) ? c : c.toLowerCase()));
+  return t.replace(/\u0003/g, '').replace(/[ \t]+/g, ' ').trim();
+}
+function place(t) {
+  // 3. turn tokens into marks, left to right (underlined / starred reach back to the last boundary)
+  for (let m, n = 0; (m = new RegExp(TOK + '(.)').exec(t)) && n < 500; n++) {
+    const k = m[1], before = t.slice(0, m.index).replace(/[ \t]+$/, ''), after = t.slice(m.index + 2).replace(/^[ \t]+/, '');
+    if (k === 'U') {
+      let start = 0;
+      for (let i = before.length - 1; i >= 0; i--) {
+        if ('\n.!?;:,'.includes(before[i]) || before.slice(i - 3, i + 1) === '</u>' || before[i] === TOK) { start = i + 1; break; }
+      }
+      const [, lead, scope] = before.slice(start).match(/^\s*((?:- |★ )*)([^]*?)\s*$/);
+      const head = before.slice(0, start) + (start && before[start - 1] !== '\n' ? ' ' : '') + lead;
+      const mk = scope ? '<u>' + scope + '</u>' : '';
+      t = head + mk + (after ? ' ' + after : '');
+      continue;
+    }
+    let open = false;
+    if ('QqT'.includes(k)) open = k === 'Q' || (k === 'T' && (before.split('"').length - 1) % 2 === 0);
+    let k2 = k; if (k === 'P') k2 = (before.split('(').length - before.split(')').length) > 0 ? ')' : '(';
+    const mark = { D: '\n---\n', B: '\n- ', N: '\n', Q: '"', q: '"', T: '"', S: '★', '(': '(', ')': ')', '>': '->', '–': '–', '&': '&', '…': '...', O: '[note: ', o: ']' }[k2] ?? k2;
+    const tight = { before: '.,?!;:)…/-o'.includes(k2) || ('QqT'.includes(k) && !open) || 'DBN'.includes(k),
+                    after: '(/-O'.includes(k2) || ('QqT'.includes(k) && open) || 'DBN'.includes(k) };
+    t = before + (tight.before || !before ? '' : ' ') + mark + (tight.after || !after ? '' : ' ') + after;
+  }
+  // capital letter after a spoken sentence end
+  t = t.replace(/(^|[^.])([.?!]) ([a-z])/g, (m, b, p, c) => b + p + ' ' + c.toUpperCase());   // not after ...
+  t = t.replace(/\n-[ \t]*(?=\n-[ \t])/g, '');   // "list item list item" makes one
+  return t.replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n').replace(/\n{2,}/g, '\n').replace(/^\n+/, '').replace(/ {2,}/g, ' ');
+}
+function joinHeard(old, piece) {
+  const p = heard(piece);
+  if (!p) return old;
+  const glue = !old || /[\s(]$/.test(old) || old.endsWith('<u>') ? '' : ' ';
+  // only the new words are placed: commands never touch earlier or typed text
+  return place(old + glue + p);
+}
+// spoken-end
+
+/* ---------- Wispr Flow: it types what you say into the box; the spoken commands become marks ---------- */
+// Flow keeps its own punctuation (it hears sentences well); only the command words change:
+// note … end note, new line, list item, divider, "<words> underlined", gold star, and any punctuation
+// word Flow left as a word. Typing a letter or two by hand is never changed.
+function fromFlow(piece) {
+  let t = piece;
+  for (const [re, k] of SPOKEN) t = t.replace(re, ' ' + TOK + k + ' ');
+  // the punctuation Flow put right after a command word ("New line." "Note:") belongs to the command, not the page
+  t = t.replace(new RegExp('(' + TOK + '.)\\s*[.,;:]+', 'g'), '$1 ');
+  // a capital Flow gave only because a command came before it
+  t = t.replace(new RegExp('(' + TOK + '[UuSs])\\s+([A-Z])(?=[a-z])', 'g'), (m, k, c) => k + ' ' + c.toLowerCase());
+  return t.replace(/[ \t]+/g, ' ').trim();
+}
+function flowInput(e) {
+  const ta = $('#draft'), now = ta.value, was = boxWas;
+  boxWas = now;
+  if (now.length - was.length < 3) return;                 // your own typing
+  let a = 0; while (a < was.length && was[a] === now[a]) a++;
+  let b = 0; while (b < was.length - a && was[was.length - 1 - b] === now[now.length - 1 - b]) b++;
+  if (a + b !== was.length) return;                         // not a plain insertion (it replaced words)
+  const piece = now.slice(a, now.length - b);
+  if (!/[a-z]{2}/i.test(piece)) return;
+  const head = now.slice(0, a), tail = now.slice(now.length - b), p = fromFlow(piece);
+  const glue = !head || /[\s(]$/.test(head) || head.endsWith('<u>') ? '' : ' ';
+  const mid = place(head + glue + p);
+  const join = tail && mid && !/[\s(]$/.test(mid) && !mid.endsWith('<u>') && !/^[\s.,?!;:)]|^<\/u>/.test(tail) ? ' ' : '';
+  ta.value = boxWas = mid + join + (/\n$/.test(mid) ? tail.replace(/^\n/, '') : tail);
+  ta.setSelectionRange(mid.length, mid.length);
+  ta.scrollTop = ta.scrollHeight;
+}
+function focusBox() {
+  const ta = $('#draft');
+  ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+}
+function setFlow(on) {
+  flow = on; store.set('flow', on);
+  if (on && mic.on) micOff();
+  document.body.classList.toggle('flow', on);
+  $('#vFlow').classList.toggle('on', on); $('#vMac').classList.toggle('on', !on);
+  renderMic();
+  if (on && pages.length) focusBox();
+}
+$('#vFlow').onclick = () => setFlow(true);
+$('#vMac').onclick = () => setFlow(false);
+
+function addText(page, text, spoken) {
+  if (!text) return;
+  const cmd = spoken && text.match(/^[\s,.;:!?]*(underlined|underline that|underline|gold stars?|starred|star that)[\s,.;:!?]*$/i);
+  if (cmd && pages[idx]?.name === page && markSelection(/star/i.test(cmd[1]) ? 's' : 'u')) return;
+  // Goes in at the cursor when you're in the text box (replacing any highlighted words); otherwise at the end.
+  const ta = $('#draft'), shown = pages[idx]?.name === page, inBox = shown && document.activeElement === ta;
+  const old = textOf(page);
+  const [a, b] = inBox ? [ta.selectionStart, ta.selectionEnd] : [old.length, old.length];
+  const head = old.slice(0, a), tail = old.slice(b);
+  let mid;
+  if (spoken) mid = joinHeard(head, text);
+  else {
+    const glue = !head || /\s$/.test(head) || head.endsWith('<u>') || /^(\s|<\/u>)/.test(text) ? '' : ' ';
+    mid = (head + glue + text).replace(/\n{2,}/g, '\n').replace(/^\n+/, '');
+  }
+  const join = tail && mid && !/[\s(]$/.test(mid) && !mid.endsWith('<u>') && !/^[\s.,?!;:)]|^<\/u>/.test(tail) ? ' ' : '';
+  drafts[page] = mid + join + (/\n$/.test(mid) ? tail.replace(/^\n/, '') : tail);
+  if (shown) {
+    ta.value = drafts[page];
+    if (inBox) ta.setSelectionRange(mid.length, mid.length);   // the cursor follows what was just added
+    else ta.scrollTop = ta.scrollHeight;
+  }
+  unsaved.add(page); saveSoon(page); renderStrip();
+}
+
+async function commitAndNext() {
+  const p = pages[idx]; if (!p) return;
+  if (underlineOpen(p.name)) mark('u');
+  cut(true);
+  const page = p.name, here = idx;
+  if (here < pages.length - 1) { idx = here + 1; show(); }
+  else toast('That was the last page.');
+  // finish this page in the background: wait for its last words, then save it for good
+  try {
+    await (chains[page] || Promise.resolve());
+    const text = textOf(page).trim();
+    if (p.said && text === p.said.trim()) { clearTimeout(saveT); drafts[page] = ''; unsaved.add(page); saveNow(); return; }   // nothing changed
+    if (!text) { if (here < pages.length - 1) toast(`${label(p)} skipped (nothing said).`); return; }
+    clearTimeout(saveT); unsaved.delete(page);
+    await api(`/api/narrate/commit/${enc(journal)}/${page}`, { method: 'POST', body: JSON.stringify({ text }) });
+    drafts[page] = ''; p.said = text; p.voice = 'waiting';
+    if (pages[idx]?.name === page) $('#draft').value = text;
+    renderStrip(); renderSaid();
+    $('#saving').textContent = `${label(p)} saved ✓`;
+    setTimeout(() => loadPages(false), 400);
+  } catch (e) { toast(`${label(p)} not saved: ${e.message}. Its text is kept; go back and press Enter again.`, 5000); unsaved.add(page); saveSoon(page); }
+}
+$('#next').onclick = commitAndNext;
+
+/* ---------- marks: underlines and divider lines, placed where you are in the reading ---------- */
+// Stored as <u>…</u> and a --- line, so they stay in the transcript (and can teach a model later).
+const uOpen = {};
+function underlineOpen(page) {
+  if (page in uOpen) return uOpen[page];
+  const t = textOf(page);
+  return t.lastIndexOf('<u>') > t.lastIndexOf('</u>');
+}
+// Words highlighted in the text box? Underline (or star) exactly those instead.
+function selected() {
+  const ta = $('#draft');
+  return document.activeElement === ta && ta.selectionEnd > ta.selectionStart ? [ta.selectionStart, ta.selectionEnd] : null;
+}
+function markSelection(kind) {
+  const sel = selected(), p = pages[idx]; if (!sel || !p) return false;
+  const ta = $('#draft'), v = ta.value;
+  let [a, b] = sel;
+  while (a < b && /\s/.test(v[a])) a++;          // leave out spaces at the edges
+  while (b > a && /\s/.test(v[b - 1])) b--;
+  if (a === b) return false;
+  let out, ns, ne;
+  if (kind === 'u') {
+    if (v.slice(a - 3, a) === '<u>' && v.slice(b, b + 4) === '</u>') { out = v.slice(0, a - 3) + v.slice(a, b) + v.slice(b + 4); ns = a - 3; ne = b - 3; }   // already underlined: undo it
+    else { out = v.slice(0, a) + '<u>' + v.slice(a, b) + '</u>' + v.slice(b); ns = a + 3; ne = b + 3; }
+  } else {
+    if (v.slice(a - 2, a) === '★ ') { out = v.slice(0, a - 2) + v.slice(a); ns = a - 2; ne = b - 2; }
+    else { out = v.slice(0, a) + '★ ' + v.slice(a); ns = a + 2; ne = b + 2; }
+  }
+  ta.value = drafts[p.name] = out; ta.setSelectionRange(ns, ne);
+  delete uOpen[p.name]; saveSoon(p.name); renderStrip(); renderMarks();
+  return true;
+}
+function mark(kind) {
+  if ((kind === 'u' || kind === 's') && markSelection(kind)) return;
+  const p = pages[idx]; if (!p) return;
+  const page = p.name;
+  let tok;
+  if (kind === 'u') { const open = underlineOpen(page); tok = open ? '</u>' : '<u>'; uOpen[page] = !open; }
+  else tok = { d: '\n---\n', b: '\n- ', s: '★ ' }[kind];
+  cut(true);   // the words before the mark go in first
+  chains[page] = (chains[page] || Promise.resolve()).then(() => addText(page, tok));
+  renderMarks();
+}
+function renderMarks() {
+  const p = pages[idx], open = p && underlineOpen(p.name);
+  $('#mU').classList.toggle('open', !!open);
+  $('#mU').firstElementChild.textContent = open ? 'End underline' : 'Underline';
+}
+$('#mU').onclick = () => mark('u');
+['#mU', '#mS', '#mD', '#mB'].forEach(id => $(id).addEventListener('mousedown', e => { if (document.activeElement === $('#draft')) e.preventDefault(); }));
+$('#mD').onclick = () => mark('d');
+$('#mB').onclick = () => mark('b');
+$('#mS').onclick = () => mark('s');
+$('#prev').onclick = () => go(idx - 1);
+setInterval(() => { if (journal && !document.hidden) { loadPages(false).catch(() => {}); renderTraining(); } }, 4000);
+renderTraining();
+
+/* ---------- listening ---------- */
+// The mic stays open; speech is cut into pieces at pauses. Each piece is sent to the Mac,
+// kept as audio, and turned into text there (whisper, local). A rough preview shows while you talk.
+const mic = { on: false };
+let ctx = null, stream = null, proc = null, srcNode = null;
+const RATE = 16000;
+let cur = null;   // the piece being spoken: { page, parts: [Int16Array], samples, speech, quiet }
+let floor = 0.004, lastPeek = 0, peeking = false;
+const diag = { frames: 0, max: 0, talk: 0 };
+
+function newPiece() { cur = { page: pages[idx]?.name, parts: [], samples: 0, speech: 0, quiet: 0 }; }
+function wavOf(parts, samples) {
+  const buf = new ArrayBuffer(44 + samples * 2), dv = new DataView(buf);
+  const str = (o, s) => [...s].forEach((ch, i) => dv.setUint8(o + i, ch.charCodeAt(0)));
+  str(0, 'RIFF'); dv.setUint32(4, 36 + samples * 2, true); str(8, 'WAVE'); str(12, 'fmt ');
+  dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true); dv.setUint32(24, RATE, true);
+  dv.setUint32(28, RATE * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true); str(36, 'data'); dv.setUint32(40, samples * 2, true);
+  let o = 44; for (const p of parts) { new Int16Array(buf, o, p.length).set(p); o += p.length * 2; }
+  return new Blob([buf], { type: 'audio/wav' });
+}
+function cut(keepShort) {
+  // send what's been said so far as a piece of the page it was said on
+  if (!cur) return;
+  const piece = cur; newPiece();
+  if (piece.speech < (keepShort ? 0.08 : 0.25) * RATE || !piece.page) return;
+  const wav = wavOf(piece.parts, piece.samples), page = piece.page;
+  if (pages[idx]?.name === page) $('#interim').textContent = '…';
+  chains[page] = (chains[page] || Promise.resolve()).then(async () => {
+    for (let tries = 0; tries < 3; tries++) {
+      try {
+        const r = await api(`/api/narrate/chunk/${enc(journal)}/${page}`, { method: 'POST', body: wav, headers: { 'Content-Type': 'audio/wav' } });
+        addText(page, r.text, true);
+        return;
+      } catch (e) { report('piece failed: ' + e.message); await new Promise(r => setTimeout(r, 1500)); }
+    }
+    toast('A piece of speech could not be turned into text. Its recording is kept.');
+  }).finally(() => { if (pages[idx]?.name === page && !peeking) $('#interim').textContent = ''; });
+}
+async function peek() {
+  if (peeking || !cur || cur.speech < 0.6 * RATE) return;
+  peeking = true; lastPeek = performance.now();
+  const page = cur.page;
+  try {
+    const r = await api(`/api/narrate/peek/${enc(journal)}/${page}`, { method: 'POST', body: wavOf(cur.parts, cur.samples), headers: { 'Content-Type': 'audio/wav' } });
+    if (r.text && cur && cur.page === page && pages[idx]?.name === page) $('#interim').textContent = place(heard(r.text)).replace(/\n/g, ' ⏎ ');
+  } catch {} finally { peeking = false; }
+}
+
+async function micOn() {
+  if (mic.on) return;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+  } catch (e) {
+    const why = e.name === 'NotAllowedError' ? 'Microphone blocked. Allow it for this page (the icon in the address bar), then press Space again.'
+      : !window.isSecureContext ? 'The microphone needs a secure page. Use the link from the scanner (iPhone → Copy laptop link) and accept this Mac once in Safari.' : 'No microphone: ' + e.name;
+    return toast(why, 6000);
+  }
+  api('/api/narrate/warm', { method: 'POST' }).catch(() => {});
+  ctx = new AudioContext(); await ctx.resume();
+  srcNode = ctx.createMediaStreamSource(stream); proc = ctx.createScriptProcessor(2048, 1, 1);
+  const mute = ctx.createGain(); mute.gain.value = 0.0001;   // Safari skips processing that leads to total silence
+  srcNode.connect(proc); proc.connect(mute); mute.connect(ctx.destination);
+  const ratio = ctx.sampleRate / RATE;
+  newPiece();
+  proc.onaudioprocess = e => {
+    if (!cur) return;
+    const d = e.inputBuffer.getChannelData(0), n = Math.floor(d.length / ratio), out = new Int16Array(n);
+    let sq = 0;
+    for (let i = 0; i < n; i++) {
+      const a = Math.floor(i * ratio), b = Math.floor((i + 1) * ratio); let s = 0;
+      for (let k = a; k < b; k++) s += d[k];
+      const v = Math.max(-1, Math.min(1, s / (b - a))); out[i] = v < 0 ? v * 0x8000 : v * 0x7fff; sq += v * v;
+    }
+    const rms = Math.sqrt(sq / n);
+    floor = rms < floor ? floor * 0.9 + rms * 0.1 : floor * 0.999 + rms * 0.001;   // follows the room's quiet level
+    const talking = rms > Math.max(0.005, floor * 2.5);
+    diag.frames++; diag.max = Math.max(diag.max, rms); if (talking) diag.talk++;
+    $('#level').style.width = Math.min(100, rms * 900) + '%';
+    $('#level').style.background = talking ? 'var(--good)' : 'var(--ink-3)';
+    if (talking) { cur.speech += n; cur.quiet = 0; } else cur.quiet += n;
+    // A long pause inside one piece makes the speech model drop or repeat words, so only the first
+    // third of a second of each pause is kept.
+    if (!(cur.speech && !talking && cur.quiet > RATE / 3)) { cur.parts.push(out); cur.samples += n; }
+    if (!cur.speech) {   // nothing said yet: keep only the last half second, so first words aren't clipped
+      while (cur.samples - cur.parts[0].length > RATE / 2) cur.samples -= cur.parts.shift().length;
+      return;
+    }
+    const len = cur.samples / RATE, quiet = cur.quiet / RATE;
+    if (quiet > 0.8 || (len > 18 && quiet > 0.25) || len > 28) cut(true);
+    else if (talking && performance.now() - lastPeek > 1200) peek();
+  };
+  mic.on = true; renderMic();
+  const track = stream.getAudioTracks()[0];
+  Object.assign(diag, { frames: 0, max: 0, talk: 0 });
+  report(`mic on: rate=${ctx.sampleRate} state=${ctx.state} track=${track?.readyState} muted=${track?.muted}`);
+  clearInterval(diag.t);
+  diag.t = setInterval(() => {   // loudness only, never words: shows whether the mic hears anything
+    if (!mic.on) return clearInterval(diag.t);
+    report(`mic 5s: frames=${diag.frames} loudest=${diag.max.toFixed(4)} floor=${floor.toFixed(4)} speechframes=${diag.talk} ctx=${ctx.state}`);
+    if (!diag.frames) toast('The browser isn\'t passing sound through. Press Space twice to restart listening.', 5000);
+    Object.assign(diag, { frames: 0, max: 0, talk: 0 });
+  }, 5000);
+}
+function micOff() {
+  if (!mic.on) return;
+  cut(true);
+  try { srcNode.disconnect(); proc.disconnect(); } catch {}
+  stream.getTracks().forEach(t => t.stop()); ctx.close();
+  mic.on = false; cur = null; $('#level').style.width = 0; renderMic();
+}
+function renderMic() {
+  if (flow) {
+    $('#micState').textContent = 'Hold your Flow key and read the page';
+    $('#micSub').textContent = 'Wispr Flow types it into the box below. ⌘↵ (or Save & next page) saves and turns the page.';
+    return;
+  }
+  $('#mic').classList.toggle('on', mic.on);
+  $('#micState').textContent = mic.on ? 'Listening' : 'Paused';
+  $('#micSub').textContent = mic.on ? 'Read the page. Enter or → saves it and turns to the next one.' : 'Press Space (or the button) to talk.';
+}
+$('#mic').onclick = () => mic.on ? micOff() : micOn();
+
+/* ---------- keys ---------- */
+document.addEventListener('keydown', e => {
+  const typing = document.activeElement === $('#draft');
+  if (typing) {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (!flow) $('#draft').blur(); commitAndNext(); }
+    else if (flow && e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); go(idx - 1); }
+    else if (e.key === 'Escape') $('#draft').blur();
+    else if ((e.key === 'u' || e.key === 'U') && !e.altKey && selected()) { e.preventDefault(); markSelection('u'); }
+    return;
+  }
+  if (e.target.tagName === 'SELECT' || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.code === 'Space') { e.preventDefault(); if (flow) focusBox(); else mic.on ? micOff() : micOn(); }
+  else if (e.key === 'Enter' || e.key === 'ArrowRight') { e.preventDefault(); commitAndNext(); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); go(idx - 1); }
+  else if (e.key === 'u' || e.key === 'U') { e.preventDefault(); mark('u'); }
+  else if (e.key === 'd' || e.key === 'D') { e.preventDefault(); mark('d'); }
+  else if (e.key === 'b' || e.key === 'B') { e.preventDefault(); mark('b'); }
+  else if (e.key === 's' || e.key === 'S') { e.preventDefault(); mark('s'); }
+});
+document.addEventListener('keyup', e => { if (e.code === 'Space' && document.activeElement?.tagName === 'BUTTON') e.preventDefault(); });
+// buttons shouldn't keep focus, or Space would click them again
+document.addEventListener('click', e => { if (e.target.closest('button')) e.target.closest('button').blur(); });
+window.addEventListener('beforeunload', () => { if (unsaved.size) saveNow(); });
+
+setFlow(flow);
+loadJournals().catch(e => { $('#empty').textContent = 'Could not load pages: ' + e.message; });
+</script>
+</body>
+</html>
