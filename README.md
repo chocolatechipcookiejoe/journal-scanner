@@ -172,3 +172,7 @@ Decide first whether your agent may read journal pages at all. If the agent is a
 Settings, the iPhone certificate and the whisper model live in `~/Library/Application Support/JournalScanner/`.
 
 To change paths, models, ports, prompts or spoken commands, see [CUSTOMIZE.md](CUSTOMIZE.md).
+
+## License
+
+MIT. See [LICENSE](LICENSE).
