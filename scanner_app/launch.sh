@@ -39,8 +39,10 @@ pgrep -qf "ollama serve" || open -ga Ollama 2>/dev/null
 
 # The vault: open the encrypted image if it isn't mounted yet.
 if [[ ! -d "$VAULT" ]]; then
-  img=$(ls -d "$HOME"/$VAULT_NAME.{sparsebundle,sparseimage,dmg} "$HOME"/Documents/$VAULT_NAME.{sparsebundle,sparseimage,dmg} \
-            /Volumes/*/$VAULT_NAME.{sparsebundle,sparseimage,dmg} /Volumes/*/*/$VAULT_NAME.{sparsebundle,sparseimage,dmg} 2>/dev/null | head -1)
+  # (N): a place with no vault is skipped (without it, zsh drops the whole search on the first miss)
+  found=( "$HOME"/$VAULT_NAME.{sparsebundle,sparseimage,dmg}(N) "$HOME"/Documents/$VAULT_NAME.{sparsebundle,sparseimage,dmg}(N) \
+          /Volumes/*/$VAULT_NAME.{sparsebundle,sparseimage,dmg}(N) /Volumes/*/*/$VAULT_NAME.{sparsebundle,sparseimage,dmg}(N) )
+  img="${found[1]}"
   if [[ -n "$img" ]]; then
     open "$img"   # macOS asks for the vault password
     for i in {1..120}; do [[ -d "$VAULT" ]] && break; sleep 1; done
